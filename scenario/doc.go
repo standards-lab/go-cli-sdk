@@ -9,9 +9,9 @@
 //     nodes it declares, and its steps
 //   - [Step], one beat of the narration: an intent sentence and the
 //     action that does it
-//   - [Reporter], which writes the narration, with [Reporter.Note] for a
-//     step's prose and [Reporter.Show] for the output its operation
-//     produced
+//   - [Reporter], which writes a step's narration under its heading
+//   - [Reporter.Note], which prints a step's prose
+//   - [Reporter.Show], which prints the output a step's operation produced
 //   - [Commands], which builds the "scenario" parent with one leaf per
 //     scenario, for a root to mount
 //   - [WriteListing], which writes the listing of the scenarios that the
@@ -36,20 +36,14 @@
 // The narration is plain text on the command's standard output, with no
 // color. Each step opens with a heading of its number, the step count, and
 // its intent, set off from the step before it by a blank line; under it,
-// [Reporter.Note] prints prose wrapped at 80 columns and indented two
-// spaces, and [Reporter.Show] prints a block indented four, so a step's
-// result reads apart from its narration:
+// [Reporter.Note] prints the step's prose and [Reporter.Show] its result,
+// indented past the prose:
 //
 //	[2/3] List the files
 //	  The list command reads the store and prints one file per line.
 //	    notes.txt
 //	    todo.txt
 //
-// The steps run in order and stop at the first action that returns an
-// error, which the leaf returns as "step i (intent): err"; the dispatcher
-// labels it with the command's path, so the report names the scenario and
-// the step, and the run exits with go-core's ExitFailure.
-//
-// [Commands] panics on a wiring mistake: no scenarios, two scenarios with
-// one name, or a scenario with no steps.
+// The steps run in order and stop at the first failing action, and
+// [Commands] panics on a wiring mistake, as its documentation states.
 package scenario

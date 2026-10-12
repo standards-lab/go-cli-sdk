@@ -18,6 +18,12 @@ import (
 // Run alone, the parent prints its help, which ends with the listing
 // [WriteListing] writes.
 //
+// A leaf runs its scenario's steps in order, each under a heading its
+// [Reporter] prints, and stops at the first action that returns an error,
+// which it returns as "step i (intent): err"; the dispatcher labels it
+// with the command's path, so the report names the scenario and the step,
+// and the run exits with go-core's ExitFailure.
+//
 // Commands panics on a wiring mistake: no scenarios, two scenarios with
 // one name, or a scenario with no steps, naming the scenario.
 func Commands(scenarios ...Scenario) []*cli.Command {

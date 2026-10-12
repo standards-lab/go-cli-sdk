@@ -18,7 +18,7 @@ type Scenario struct {
 	Name    string      // the word after "scenario" that runs it
 	Summary string      // the line the scenario parent's help and the listing print
 	Nodes   []graph.Ref // the nodes the command declares, in order, which the listing names
-	Steps   []Step
+	Steps   []Step      // the beats the command runs, in order; at least one
 }
 
 // Step is one beat of the narration: the sentence saying what is about to
