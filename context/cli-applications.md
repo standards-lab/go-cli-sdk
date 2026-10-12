@@ -60,19 +60,20 @@ package, as go-cli-sdk-template's `Builds` and `Halt` do.
 
 ## A command builds only what it declares
 
-- **`Use` and `inv.Get`.** A command declares the nodes it needs with `Use`, inherited along its
-  command path, and reads their values in `Run` with `inv.Get`. The dispatcher builds that union,
-  with the lifecycle configuration node, once each, runs the command under go-core's
-  coordinator, and shuts the built nodes down in reverse when it returns. A command that reads a
-  node it did not declare panics, naming the command and the node, so the omission fails the
-  first time the command runs, by the [wiring rule](lifecycle-and-context.md#the-wiring-rule). A
-  command that declares nothing builds nothing and reads no configuration.
-- **`Validate` builds nothing.** Every check of a command's input runs in `Validate`, before
-  anything is built, so a usage error never brings up a dependency or reads configuration.
+- **`Use` and `inv.Get`.** A command declares the nodes it needs with `Use` and reads their
+  values in `Run` with `inv.Get`, so a run builds only those nodes, and a command that declares
+  nothing builds nothing and reads no configuration. The
+  [`cli` package documentation](https://github.com/standards-lab/go-cli-sdk/blob/main/doc.go)
+  states how the dispatcher builds, runs, and shuts the nodes down, and that `inv.Get` panics on
+  a node the command did not declare, which enforces the
+  [wiring rule](lifecycle-and-context.md#the-wiring-rule).
+- **`Validate` builds nothing.** A command checks its input in `Validate`, as
+  [a CLI domain's commands](domain-files.md#a-cli-domains-commands) do.
 - **Root flags are checked in `PreRun`.** A root flag is accepted at any depth, so a check every
   command shares, such as a flag that names something the tool cannot build, belongs in the
-  root's `PreRun`. It runs once per dispatch to a leaf, after the leaf's own checks and before
-  the build, and not at all on help or a usage error.
+  root's `PreRun`. The
+  [`cli` package documentation](https://github.com/standards-lab/go-cli-sdk/blob/main/doc.go)
+  states where `PreRun` falls in the dispatch order.
 
 ## Exit codes and command words
 
