@@ -1,12 +1,12 @@
 # goal · cli
 
-- **State:** brief ready
-- **Task:** role-interfaces
-- **Branch:** role-interfaces
+- **State:** idle
+- **Task:** none
+- **Branch:** none
 
 ## Tasks
 
-1. [ ] role-interfaces
+1. [x] role-interfaces
 2. [ ] sdk
 3. [ ] template
 
@@ -65,10 +65,6 @@ Door          one-way for the go-core v0.8.0 and go-web-sdk v0.15.2 tags;
               the code and doc changes before tagging are two-way
 Release       go-core v0.8.0; go-web-sdk v0.15.2
 ```
-
-## Progress
-
-slices 4/4 committed · standards done · spec done · editor done
 
 ## Decisions
 
