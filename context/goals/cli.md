@@ -129,7 +129,7 @@ Release       go-cli-sdk v0.1.0
 
 ## Progress
 
-slices 0/4 committed · standards — · spec — · editor —
+slices 4/4 committed · standards ✓ · spec ✓ · editor ✓
 
 ## Decisions
 
@@ -186,6 +186,21 @@ slices 0/4 committed · standards — · spec — · editor —
   commits only, delete branch on merge) are applied in the CI slice before v0.1.0 is tagged;
   rejected handing them to the session as a note, since release-and-ci.md requires the ruleset in
   every repository.
+- sdk: go.mod gains its go-core v0.8.0 require in the dispatcher slice, not the scaffolding
+  slice, since the check's `go mod tidy -diff` rejects a require nothing imports.
+- sdk: go-core v0.8.0's labels replace the spike's in reported errors: "startup: <node>: <err>",
+  "shutdown: drain timeout after ...", and "run: ..." for a Monitored failure.
+- sdk: a tree may be dispatched more than once. Each dispatch parses a fresh flag set, so
+  Changed, Require, and Exclusive see only its flags, and first restores, newest first, only the
+  flags the previous dispatch set, or that a failed parse wrote, to their pre-dispatch values. A
+  single dispatch calls no Set beyond the command line's and keeps program-assigned values;
+  flag.Func, flag.BoolFunc, and other Values without flag.Getter are never restored; a restore
+  whose Set rejects the captured String panics, as Run's doc comment states. Rejected resetting
+  every flag to its DefValue, which overwrote program-assigned values on a single dispatch.
+- sdk: the Monitored-failure test's leaf returns nil once its context ends, so stderr holds one
+  "run:" line; returning ctx.Err() would join "context canceled" to it.
+- sdk: the capability map and CHANGELOG say CI runs on pull requests and on pushes to main,
+  matching ci.yml.
 
 ## Pending edits
 
@@ -199,3 +214,8 @@ slices 0/4 committed · standards — · spec — · editor —
   lint, build check, or CI step enforces the line names go-cli-sdk as the exception. A depguard
   rule in its check holds the module to the standard library and go-core, so an import outside
   that line fails the check and CI. Every other repository holds the line by discipline and review.
+- standards-lab · `context/cli-applications.md` ("The plan", the go-cli-sdk bullet): go-cli-sdk
+  v0.1.0 is built, so the bullet states that it provides package `cli` over the standard library
+  and go-core, links its README and `doc.go` for the API and the left-out features in place of
+  listing them, and keeps only why the `App` type stays in the template's `internal/app` and why
+  the scenario runner is the tool's own package, promoted only on fit.

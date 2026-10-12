@@ -33,7 +33,8 @@ commands build only the go-core graph nodes they declare, on go-core v0.8.0.
 - `cli.Streams`, the standard input, output, and error a dispatch uses, embedded in the
   `Invocation`, and `cli.Run`, which returns go-core's exit codes: `ExitUsage` for requested
   help and usage errors (`cli.UsageError`, `cli.Usagef`), `ExitFailure` for any other error,
-  and `ExitOK`.
+  and `ExitOK`. A tree may be dispatched more than once, and each dispatch starts from the flag
+  values held before the previous one.
 - CI runs `mise run check` on every pull request and push to `main`; a `v*` tag publishes a
   GitHub release.
 
