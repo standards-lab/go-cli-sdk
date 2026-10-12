@@ -1,14 +1,14 @@
 # goal · cli
 
-- **State:** brief ready
-- **Task:** template
-- **Branch:** template
+- **State:** idle
+- **Task:** none
+- **Branch:** none
 
 ## Tasks
 
 1. [x] role-interfaces
 2. [x] sdk
-3. [ ] template
+3. [x] template
 
 ## Task brief · template
 
@@ -191,10 +191,6 @@ Door          One-way for go-cli-sdk v0.2.0 and template/v0.1.0, since
 Release       go-cli-sdk v0.2.0, then go-cli-sdk-template
               template/v0.1.0
 ```
-
-## Progress
-
-slices 7/7 committed · standards ✓ · spec ✓ · editor ✓ · go-cli-sdk v0.2.0 released (PR #3) · template/v0.1.0 at SHIP
 
 ## Decisions
 
