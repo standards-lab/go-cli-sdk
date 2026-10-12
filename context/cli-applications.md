@@ -20,8 +20,9 @@ layout below.
 This page states the conventions particular to a CLI, and links the rest where it is stated:
 [The composition root](../../../principles/composition-root.md#the-entrypoint-owns-process-entry-and-exit)
 states why a CLI's configuration is a node of its graph,
-[Domain package files](domain-files.md#a-cli-domains-commands) how a domain package lays out
-its commands and splits its API by dependency profile, and
+[Domain package files](domain-files.md) how a domain package
+[splits its API by dependency profile](domain-files.md#a-cli-splits-its-api-by-dependency-profile)
+and [lays out its commands](domain-files.md#a-cli-domains-commands), and
 [Tests and documentation](tests-and-docs.md#the-unit-tier-black-box-and-hermetic) where the
 composition root's fixtures live.
 
@@ -40,7 +41,8 @@ the run returns. It loads nothing.
   fixture can observe or replace a node before a run.
 - `infrastructure.go` defines the configuration and the infrastructure services as graph nodes.
   Configuration is read in its node's constructor, from the tool's environment prefix, only when
-  a build reaches it; there is no `Config` struct. It is the only file that names a provider.
+  a build reaches it; no aggregate `Config` struct gathers it. It is the only file that names a
+  provider.
 - `domain.go` defines each domain's nodes and mounts that domain's commands, one
   `root.Add(pkg.Commands(...)...)` per domain over the nodes it passes.
 - `version.go` holds the version command, which declares no nodes and prints the main module's
