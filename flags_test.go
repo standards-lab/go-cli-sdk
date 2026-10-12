@@ -161,6 +161,59 @@ func TestRun_TreeDispatchesMoreThanOnce(t *testing.T) {
 	}
 }
 
+func TestRun_RedispatchStartsFromDefaults(t *testing.T) {
+	var inv *cli.Invocation
+	var tags []string
+	leaf := &cli.Command{
+		Name: "leaf",
+		Run: func(_ context.Context, i *cli.Invocation) error {
+			inv = i
+			return nil
+		},
+	}
+	n := leaf.Flags().Int("n", 0, "a required number")
+	verbose := leaf.Flags().Bool("verbose", false, "a bound flag")
+	cli.StringsVar(leaf.Flags(), &tags, "tag", []string{"def"}, "a repeatable flag")
+	leaf.Require("n")
+	root := (&cli.Command{Name: "prog"}).Add(leaf)
+	dsn := root.Flags().String("dsn", "none", "a root flag")
+
+	first := dispatch(t, root, "--dsn", "x", "leaf", "--n", "1", "--tag", "a", "--verbose")
+
+	if first.code != process.ExitOK {
+		t.Fatalf("first: code = %d, stderr = %q, want %d", first.code, first.stderr, process.ExitOK)
+	}
+	if *n != 1 || !*verbose || *dsn != "x" || !slices.Equal(tags, []string{"a"}) {
+		t.Fatalf("first: --n, --verbose, --dsn, --tag = %d, %v, %q, %q, want 1, true, x, [a]", *n, *verbose, *dsn, tags)
+	}
+
+	second := dispatch(t, root, "leaf", "--tag", "b")
+
+	if second.code != process.ExitUsage || !strings.HasPrefix(second.stderr, "prog leaf: required flag --n not set\n") {
+		t.Errorf("second: code = %d, stderr = %q, want %d and --n missing", second.code, second.stderr, process.ExitUsage)
+	}
+
+	third := dispatch(t, root, "leaf", "--n", "2")
+
+	if third.code != process.ExitOK {
+		t.Fatalf("third: code = %d, stderr = %q, want %d", third.code, third.stderr, process.ExitOK)
+	}
+	for _, name := range []string{"tag", "verbose", "dsn"} {
+		if inv.Changed(name) {
+			t.Errorf("third: Changed(%q) = true, want false", name)
+		}
+	}
+	if *verbose || *dsn != "none" || !slices.Equal(tags, []string{"def"}) {
+		t.Errorf("third: --verbose, --dsn, --tag = %v, %q, %q, want false, none, [def]", *verbose, *dsn, tags)
+	}
+
+	fourth := dispatch(t, root, "leaf", "--n", "3", "--tag", "b", "--tag", "c")
+
+	if fourth.code != process.ExitOK || !slices.Equal(tags, []string{"b", "c"}) {
+		t.Errorf("fourth: code = %d, --tag = %q, want %d, [b c]", fourth.code, tags, process.ExitOK)
+	}
+}
+
 func TestRun_NestedParentFlagsStayLocal(t *testing.T) {
 	f := newFixture(nil)
 

@@ -92,14 +92,23 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 	prepareTree(root, o.graph != nil)
 	cmd := root
 	var path []*Command
+	changed := make(map[string]bool)
 	for {
 		path = append(path, cmd)
-		rest, code, ok := parse(cmd, args, streams)
+		rest, set, code, ok := parse(cmd, args, streams)
 		if !ok {
 			return code
 		}
+		// The leaf sees its own flags and the root flags, given at
+		// whichever level they were parsed. A nested parent's local flags
+		// are left out, so a leaf flag of the same name is not shadowed.
+		for _, name := range set {
+			if !cmd.isParent() || root.Flags().Lookup(name) != nil {
+				changed[name] = true
+			}
+		}
 		if !cmd.isParent() {
-			return execute(ctx, &o, path, rest, streams)
+			return execute(ctx, &o, path, rest, changed, streams)
 		}
 		if len(rest) == 0 {
 			return process.Usage(streams.Stdout, help(cmd))
@@ -114,13 +123,20 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 }
 
 // parse parses args against cmd's flags and returns the positional
-// arguments left. A parent's flags precede its subcommand, so parsing stops
+// arguments left and the names of the flags args set. It parses with a
+// flag set made for this dispatch that shares the Values of cmd's own, so
+// the flags set count only this dispatch's, which a flag.FlagSet parsed
+// before would not forget. A parent's flags precede its subcommand, so parsing stops
 // at the first non-flag argument, which names it; a leaf's flags may come
 // anywhere among its positional arguments, up to a "--". When parsing ends
 // the dispatch, because help was asked for or a flag was wrong, it reports
 // that and returns ok false with the exit code.
-func parse(cmd *Command, args []string, streams Streams) (rest []string, code int, ok bool) {
-	fs := cmd.Flags()
+func parse(cmd *Command, args []string, streams Streams) (rest, set []string, code int, ok bool) {
+	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	cmd.Flags().VisitAll(func(f *flag.Flag) {
+		fs.Var(f.Value, f.Name, f.Usage)
+	})
 	var positional []string
 	if !cmd.isParent() {
 		args, positional = interleave(fs, args)
@@ -128,30 +144,33 @@ func parse(cmd *Command, args []string, streams Streams) (rest []string, code in
 	err := fs.Parse(args)
 	switch {
 	case errors.Is(err, flag.ErrHelp):
-		return nil, process.Usage(streams.Stdout, help(cmd)), false
+		return nil, nil, process.Usage(streams.Stdout, help(cmd)), false
 	case err != nil:
-		return nil, usageError(cmd, streams.Stderr, err), false
+		return nil, nil, usageError(cmd, streams.Stderr, err), false
 	}
+	fs.Visit(func(f *flag.Flag) {
+		set = append(set, f.Name)
+	})
 	if cmd.isParent() {
-		return fs.Args(), process.ExitOK, true
+		return fs.Args(), set, process.ExitOK, true
 	}
 	// interleave left only flags and their values, so fs.Args() is empty.
-	return positional, process.ExitOK, true
+	return positional, set, process.ExitOK, true
 }
 
 // execute checks the leaf's positional argument count, its flag groups,
 // and its input with Validate, runs the root's PreRun and then the leaf,
 // under a lifecycle when the path declares nodes with Use, and maps the
 // first error to an exit code. path holds the commands from the root to
-// the leaf.
-func execute(ctx context.Context, o *options, path []*Command, args []string, streams Streams) int {
+// the leaf, and changed the flags the leaf sees set on the command line.
+func execute(ctx context.Context, o *options, path []*Command, args []string, changed map[string]bool, streams Streams) int {
 	root, cmd := path[0], path[len(path)-1]
 	if cmd.Args != nil {
 		if err := cmd.Args(args); err != nil {
 			return usageError(cmd, streams.Stderr, err)
 		}
 	}
-	inv := &Invocation{Streams: streams, Args: args, cmd: cmd, uses: uses(path), changed: changed(path)}
+	inv := &Invocation{Streams: streams, Args: args, cmd: cmd, uses: uses(path), changed: changed}
 	if err := cmd.checkFlags(inv.changed); err != nil {
 		return usageError(cmd, streams.Stderr, err)
 	}
@@ -209,23 +228,6 @@ func uses(path []*Command) []graph.Ref {
 		}
 	}
 	return refs
-}
-
-// changed returns the names of the flags set on the command line that the
-// leaf at the end of path can see: its own, and the root flags, given at
-// whichever level they were parsed. A nested parent's local flags are left
-// out, so a leaf flag of the same name is not shadowed.
-func changed(path []*Command) map[string]bool {
-	root, leaf := path[0], path[len(path)-1]
-	set := make(map[string]bool)
-	for _, cmd := range path {
-		cmd.Flags().Visit(func(f *flag.Flag) {
-			if cmd == leaf || root.Flags().Lookup(f.Name) != nil {
-				set[f.Name] = true
-			}
-		})
-	}
-	return set
 }
 
 // usageError reports err with cmd's short usage on stderr and returns
