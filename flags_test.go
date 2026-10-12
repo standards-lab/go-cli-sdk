@@ -266,6 +266,20 @@ func TestRun_RedispatchRestoresProgramValues(t *testing.T) {
 	}
 }
 
+func TestRun_RedispatchRestoresARootFlagSetAtTwoLevels(t *testing.T) {
+	f := newFixture(nil)
+
+	first := dispatch(t, f.root, "--dsn", "a", "group", "--dsn", "b", "leaf")
+	second := dispatch(t, f.root, "group", "leaf")
+
+	if first.code != process.ExitOK || second.code != process.ExitOK {
+		t.Fatalf("codes = %d, %d, want %d, %d", first.code, second.code, process.ExitOK, process.ExitOK)
+	}
+	if *f.dsn != "" {
+		t.Errorf("--dsn = %q, want its default %q", *f.dsn, "")
+	}
+}
+
 func TestRun_MalformedFlagValueIsRestored(t *testing.T) {
 	leaf := &cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}
 	var n int
