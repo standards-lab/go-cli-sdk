@@ -1,8 +1,8 @@
 # goal · cli
 
-- **State:** idle
-- **Task:** none
-- **Branch:** none
+- **State:** building
+- **Task:** template
+- **Branch:** template
 
 ## Tasks
 
@@ -10,122 +10,191 @@
 2. [x] sdk
 3. [ ] template
 
-## Task brief · sdk
+## Task brief · template
 
 ```
-Problem       The Elemental Architecture's second application type
-              has no SDK. CLIs still run on cobra, and the template
-              and slab wait on a released go-cli-sdk. The spike
-              proved the API, and go-core v0.8.0 now has the graph
-              and lifecycle it needs. go-cli-sdk holds no code, no
-              check, no CI, and no currency command.
-Behaviors     1. A leaf accepts its flags before, between, and
-                 after its positional arguments, up to a "--".
-                 Flags defined on the root are accepted at any
-                 depth and set one value. A command below the root
-                 that redefines a root flag panics at dispatch.
-              2. A dispatch to a leaf checks Args, then Require,
-                 then Exclusive, then Validate, then runs the
-                 root's PreRun, builds the declared nodes, and
-                 runs the leaf. It stops at the first failure, and
-                 a failure before the build builds nothing.
-              3. -h or --help, or a parent run with no subcommand,
-                 prints the generated help to stdout and returns
-                 go-core's ExitUsage. The help lists the
-                 subcommands, the command's own flags, and the
-                 global flags as --name, with required, repeatable,
-                 and default markers, then what the command's
-                 Footer writes. There is no help or completion
-                 command and no shorthand flag.
-              4. These print to stderr with the command's short
-                 usage and return ExitUsage: an unknown command or
-                 flag, a malformed flag value, a rejected argument
-                 count, a missing required flag, two flags of one
-                 exclusive group, any Validate error, and a
-                 UsageError anywhere in PreRun's or Run's error
-                 chain. Any other error prints once and returns
-                 ExitFailure. Success returns ExitOK.
-              5. Invocation.Changed reports a flag given on the
-                 command line, even at its default value. A
-                 StringsVar flag appends each occurrence, and the
-                 first occurrence replaces the default.
-              6. A leaf whose path declares nodes with Use builds
-                 their union once each, plus WithGraph's lifecycle
-                 config node, from WithGraph's graph. It runs under
-                 go-core's Coordinator and shuts down in reverse
-                 order on success, on error, and when the context
-                 ends. A leaf whose path declares nothing builds
-                 nothing. Use anywhere in a tree with no WithGraph
-                 panics at dispatch, whichever command is selected.
-              7. Invocation.Get returns a declared node's value. It
-                 panics, naming the command and the node, on a nil
-                 node, on a node the path didn't declare (even one
-                 the build reached as a dependency), and on a read
-                 before the build.
-              8. A build or startup failure is reported once, with
-                 go-core's labels ("startup: <node>: <err>",
-                 "shutdown: ..."), returns ExitFailure, and shuts
-                 down whatever had started. A Monitored node's
-                 failure ends the running command's context.
-              9. The module requires go-core v0.8.0 and imports
-                 only the standard library, go-core, and itself. A
-                 depguard rule in the check fails any other
-                 import.
-              10. The check runs in CI on every pull request into
-                  main and every push to it. A pushed v* tag
-                  creates a GitHub release from that version's
-                  changelog section. The currency command exits 0.
-                  The repository's merge waits on
-                  `gh pr checks --watch`, and its ci wait follows
-                  main's push run.
-              11. go-cli-sdk's GitHub settings match go-core's: a
-                  "main" ruleset that requires a pull request and
+Problem       go-cli-sdk v0.1.0 has no CLI scaffold, so a new tool
+              still starts from a cobra-era layout or from the
+              archived spike. The scenario runner has no shared home,
+              so every tool would copy it. go-cli-sdk-template holds
+              no code, CI, settings, or currency command. The CLI
+              conventions aren't yet in architecture.
+Behaviors     go-cli-sdk (scenario package, v0.2.0)
+              1. scenario.Commands(scenarios...) returns one "scenario"
+                 parent, as a slice, with one leaf per scenario in the
+                 order given. Each leaf takes no arguments and declares
+                 its scenario's nodes with Use. The parent declares
+                 none. Run alone or with -h, the parent prints its help
+                 ending with the listing, exits 2, and builds nothing.
+                 A usage error on a leaf builds nothing.
+              2. WriteListing(w, scenarios...) writes "Scenarios:",
+                 then for each scenario its name and summary and a
+                 "uses <node>, <node>" line in declared order, columns
+                 aligned as cli's help sections are. It builds nothing,
+                 and a tool's root Footer can call it so the root help
+                 ends with the same listing.
+              3. A scenario's leaf runs its steps in order. Before each
+                 step it writes a "[i/n] <intent>" heading, set off by
+                 one blank line except before the first. Reporter.Note
+                 wraps prose to 80 columns, indented. Reporter.Show
+                 writes what its render function wrote, indented one
+                 level further. It writes nothing when the render fails
+                 and returns that error.
+              4. A step that fails stops the run: later steps don't
+                 run, the error reads "step <i> (<intent>): <err>", and
+                 cli reports it once with exit 1. A context that ends
+                 fails the step under way.
+              5. A scenario builds only the nodes it declares, once
+                 each, under go-core's Coordinator. A declared node
+                 that fails to start fails the run before the first
+                 heading, naming the node ("startup: <node>: ..."), and
+                 what had started is shut down.
+              6. Commands panics, naming the scenario, when given none,
+                 two with one name, or one with no steps.
+              7. The module still imports only the standard library,
+                 go-core, and itself, and the depguard rule passes. The
+                 scenario package's doc.go lists every exported name.
+                 The README has a scenario section, CHANGELOG v0.2.0
+                 records the addition, and the capability map marks the
+                 scenario runner built.
+              go-cli-sdk-template (template/v0.1.0)
+              8. The module, rooted at the template subtree, requires
+                 only go-core v0.8.0 and go-cli-sdk v0.2.0. Its check
+                 passes and its currency command exits 0.
+              9. "app" with no arguments, -h, or --help prints the root
+                 help listing version and exits 2. An unknown command
+                 prints the short usage to stderr and exits 2. Neither
+                 builds a node or reads the environment.
+              10. "app version" prints the main module's version, or
+                  "(devel)" when the build has none, exits 0, and
+                  builds nothing.
+              11. New is cold: it reads nothing and builds nothing. The
+                  App publishes Graph, Nodes, and Root. Nodes holds the
+                  lifecycle config node, which reads APP_ variables
+                  when a build reaches it. A command added at Root that
+                  declares it builds it, and an invalid
+                  APP_SHUTDOWN_TIMEOUT fails that command, naming
+                  "lifecycle config", with exit 1. Run dispatches with
+                  WithGraph. The domain layer defines and mounts
+                  nothing, and its doc states what goes there. There is
+                  no admin layer and no scenario layer.
+              12. apptest.Builds records the name of each node a run
+                  builds, in build order, and records nothing for a run
+                  that builds nothing. apptest.Halt makes the lifecycle
+                  config node fail with apptest.ErrHalted, so a command
+                  that declares nodes fails before anything starts.
+              13. The integration suite builds the binary once with
+                  processtest.Main and runs it one shot at a time with
+                  processtest.Run on an empty APP_ environment:
+                  - version exits 0 with one line on stdout
+                  - root help exits 2 on stdout and lists version
+                  - an unknown command exits 2 with usage on stderr
+              14. main derives go-core's signal context and passes it,
+                  cli.Streams over the process's streams, and the
+                  arguments to the App, then exits with the code
+                  returned.
+              15. No file in the module names the template's module
+                  path except go.mod and import lines, so a gonew copy
+                  at a new path builds and passes its check.
+              16. CI runs the check on every pull request into main and
+                  every push to it, and the integration suite on pushes
+                  and on demand. The root and template copies of the
+                  workflow differ only in the subtree-locating lines.
+                  A pushed template/v* tag creates a GitHub release
+                  from the root changelog's section.
+              17. go-cli-sdk-template's GitHub settings match go-core's:
+                  a "main" ruleset that requires a pull request and
                   forbids deleting or force-pushing the branch
-                  (org-admin bypass), Dependabot security updates
-                  on, merge commits only, and branches deleted on
-                  merge.
-              12. The package comment lists every exported name.
-                  The README gives the standard, the package, and
-                  development. CHANGELOG v0.1.0 records the first
-                  release. The context capability map marks each
-                  capability built.
-Test seams    cli.Run(ctx, root, args, Streams over buffers,
-              WithGraph(...)), read through its exit code and the
-              stdout and stderr buffers (behaviors 1-8). The check,
-              the currency command, CI, and `gh api` reads of the
-              repository settings cover behaviors 9-11.
-Slices        1. Scaffolding and CI: the module on go 1.27 and
-                 go-core v0.8.0, mise tasks (check, currency,
-                 upgrade, conveniences), lint with depguard, the CI
-                 and release workflows, CHANGELOG [Unreleased], the
-                 restored CI-gated merge and ci wait, and the GitHub
-                 settings. Done when mise run currency exits 0 and
-                 the check passes (behaviors 9-11)
-              2. Dispatcher: the command tree, flags, root flags,
-                 StringsVar, NoArgs and ExactArgs, Require and
-                 Exclusive, Changed, UsageError, generated help and
-                 Footer, Streams, and Run's exit codes. The ported
-                 dispatcher tests pass over buffers (behaviors 1-5)
-              3. Per-command composition: Use, WithGraph, Get, and
-                 Validate before the build, under go-core's
-                 Coordinator. The ported composition tests show
-                 declared-only builds, reverse shutdown, and
-                 "startup:" reporting (behaviors 6-8)
-              4. Docs and release: the package comment inventory,
-                 the README, CHANGELOG v0.1.0, and the capability
-                 map (behavior 12)
-Out of scope  go-cli-sdk-template and its settings (template task);
-              an App type or a scenario runner in the SDK; a help
-              or completion command, shorthand flags, or a Long
-              counterpart; any change to go-core or go-web-sdk;
-              moving the CLI architecture pages (cli's sync); slab
-              (slab goal)
-Door          one-way for the go-cli-sdk v0.1.0 tag, since its
-              import path and API reach the module proxy. Code,
-              docs, CI, and the GitHub settings before the tag are
-              two-way.
-Release       go-cli-sdk v0.1.0
+                  (org-admin bypass), Dependabot security updates on,
+                  merge commits only, and branches deleted on merge.
+              18. The root README gives the standard, the gonew
+                  command, the layout, and development. The starter
+                  README gives running, the identity steps (rename
+                  cmd/app, the root command, and APP_), and a Scenarios
+                  section: opt in by adding the scenarios package and a
+                  scenario layer file that mounts scenario.Commands and
+                  ends the root Footer with WriteListing. internal/app's
+                  doc.go lists its layer files and carries the same
+                  opt-in paragraph. apptest's doc.go lists its exports.
+                  CHANGELOG template/v0.1.0 records the first release.
+                  The capability map drops the example domain and the
+                  scenario package. STANDARDS.md's doc.go inventory
+                  line drops scenario.
+              Goal root
+              19. go-cli-sdk's context holds the draft of the Go
+                  Elemental "CLI applications" principle page:
+                  - internal/app's layer files
+                  - Use and inv.Get
+                  - Validate building nothing
+                  - PreRun flag checks
+                  - exit 2 on help and usage errors
+                  - bare subcommand words
+                  - scenarios as opt-in, with go-cli-sdk's runner and a
+                    tool's scenarios package, and no list command
+                  The goal record's Pending edits list every edit sync
+                  applies (Sync below).
+Test seams    go-cli-sdk: cli.Run over a graph and buffers, with
+              scenario.Commands mounted at a test root, read through
+              the exit code, stdout, and stderr (behaviors 1-6).
+              Template: App.Run over buffers with apptest fixtures
+              (behaviors 9-12), and processtest.Run over the built
+              binary (behaviors 13-14). The checks, the currency
+              commands, CI, and gh api reads of the settings cover
+              behaviors 7, 8, and 15-17.
+Slices        1. go-cli-sdk scenario runner: Scenario, Step, Reporter,
+                 Commands, WriteListing, and the runner, ported from
+                 the spike with the domain listing removed. Its tests
+                 pass over a test graph (behaviors 1-6)
+              2. go-cli-sdk docs and release: the scenario doc.go
+                 inventory, the README section, CHANGELOG v0.2.0, and
+                 the capability map; the check and currency pass
+                 (behavior 7). Then go-cli-sdk's reviews and edit
+                 pass, and a go-cli-sdk release brief for the
+                 architect; on accept, publish, merge, wait for ci,
+                 and tag v0.2.0 before any template slice starts
+              3. Template scaffolding and CI: the module on go 1.27.2,
+                 mise tasks (check, currency, upgrade, build, vet,
+                 test, integration, fmt, tidy, lint), lint with
+                 testpackage, both CI workflow copies, the release
+                 workflow, CHANGELOG [Unreleased], both .gitignore
+                 copies, and the GitHub settings (behaviors 16-17)
+              4. Template composition root: main, App with Nodes,
+                 Graph, and Root, the lifecycle config node under APP_,
+                 the empty domain layer, and version, requiring the
+                 released go-cli-sdk v0.2.0 directly, with no replace
+                 (behaviors 9-11, 14)
+              5. apptest and the integration suite: Builds and Halt,
+                 internal/app's tests over them, and the processtest
+                 one-shot suite (behaviors 12-13)
+              6. Template docs: both READMEs, the doc.go files, the
+                 capability map, the STANDARDS.md line, CHANGELOG
+                 template/v0.1.0, and the path-rewrite constraint
+                 (behaviors 15, 18)
+              7. Goal root: the CLI applications page draft and the
+                 pending edits (behavior 19)
+Out of scope  A Table or Record renderer in either repository; an
+              example domain, an admin layer, or a scenario layer in
+              the template; scenario Flags, Needs, or a colored
+              Reporter (slab goal); any change to go-core, go-web-sdk,
+              or go-web-sdk-template; applying the architecture and
+              coordinator edits (cli's sync)
+Door          One-way for go-cli-sdk v0.2.0 and template/v0.1.0, since
+              both reach the module proxy. Everything before the tags
+              is two-way: code, docs, CI, settings, and the page draft.
+              Order: go-cli-sdk's slices finish, pass review, and
+              are released as v0.2.0, after the architect accepts a
+              go-cli-sdk release brief, before the template's slices
+              start. The template pins v0.2.0 from its first slice.
+              The goal record and the page draft ride a second
+              go-cli-sdk pull request at SHIP, with the session
+              brief, beside the template's.
+Release       go-cli-sdk v0.2.0, then go-cli-sdk-template
+              template/v0.1.0
 ```
+
+## Progress
+
+slices 0/7 committed · standards — · spec — · editor — · go-cli-sdk v0.2.0 —
 
 ## Decisions
 
@@ -197,6 +266,33 @@ Release       go-cli-sdk v0.1.0
   "run:" line; returning ctx.Err() would join "context canceled" to it.
 - sdk: the capability map and CHANGELOG say CI runs on pull requests and on pushes to main,
   matching ci.yml.
+- template: the template is a pure skeleton, like go-web-sdk-template: no example domain and no
+  sample infrastructure; rejected an in-memory or directory-backed stand-in domain.
+- template: no Table/Record renderer in go-cli-sdk or the template; a CLI's layout is each tool's
+  own choice, and slab's renderer already differs from the spike's.
+- template: the scenario runner moves into go-cli-sdk as the sub-package `scenario` (v0.2.0), and
+  the template ships no scenario layer, since not every CLI has scenarios; rejected the tool's
+  own runner package and putting the runner inside package `cli`.
+- template: a CLI opts into scenarios with `scenario.Commands(scenarios...)` mounted at its root
+  and `scenario.WriteListing` called from its own root Footer; rejected one `Mount` that rewrites
+  the root's Footer.
+- template: `scenario.Scenario` keeps the spike's fields exactly (Name, Summary, Nodes, Steps;
+  Reporter with Note and Show); slab's Flags, Needs, and colored Reporter are the slab goal's.
+- template: `scenario.Commands` panics on no scenarios, a duplicate name, or a scenario with no
+  steps.
+- template: a tool's own scenarios live in one root-level package named `scenarios`; rejected
+  `demo` and per-domain tours.
+- template: apptest ships with the domain-free fixtures Builds and Halt; rejected inline Observe
+  and Replace.
+- template: no admin layer in the template; internal/app's doc.go says where one goes.
+- template: the placeholder identity is "app" (cmd/app, root command "app", env prefix APP_).
+- template: the CLI conventions land in architecture as one new Go Elemental principle page, "CLI
+  applications", drafted in this context/; rejected folding them into existing pages.
+- template: the task touches only go-cli-sdk and go-cli-sdk-template, recorded here without a
+  manifest edit, since sync removes goals.cli; go-core and go-web-sdk are unchanged.
+- template: go-cli-sdk v0.2.0 is published, merged, and tagged after its slices pass review and
+  the architect accepts its release brief, before the template's slices start, so the template
+  pins the released version with no replace directive.
 
 ## Pending edits
 
