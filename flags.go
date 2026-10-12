@@ -3,6 +3,7 @@ package cli
 import (
 	"flag"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -18,9 +19,7 @@ import (
 // Validate function it would never call, a PreRun below the root, a flag
 // requirement or group the command cannot honour, or a [Command.Use] on any
 // command when Run has no graph, which hasGraph reports. Sharing is
-// idempotent, and every flag is put back to its default, so a tree can be
-// dispatched more than once and each dispatch starts from the tree's
-// defined state.
+// idempotent, so a tree can be dispatched more than once.
 func prepareTree(root *Command, hasGraph bool) {
 	var walk func(c *Command)
 	walk = func(c *Command) {
@@ -37,7 +36,6 @@ func prepareTree(root *Command, hasGraph bool) {
 			panic(fmt.Sprintf("cli: %s: Use declared but Run has no WithGraph option", c.path()))
 		}
 		c.checkWiring()
-		c.resetFlags()
 		for _, sub := range c.children {
 			sub.inherit(root.Flags())
 			walk(sub)
@@ -65,31 +63,39 @@ func (c *Command) inherit(from *flag.FlagSet) {
 	})
 }
 
-// resetFlags puts each flag c defines back to its default, undoing an
-// earlier dispatch of the tree; inherited root flags are reset at the root.
-// A [StringsVar] flag takes its default again and its next occurrence
-// replaces it. Any other flag that holds a value, which the flag package's
-// own flags show by implementing flag.Getter, and that no longer reads as
-// its DefValue is set to its DefValue. A flag without Get, such as one from
-// flag.Func, holds nothing to reset and is left alone, so its function is
-// not called. It panics when a flag refuses its own DefValue, a Value whose
-// String does not round-trip through Set.
-func (c *Command) resetFlags() {
-	c.Flags().VisitAll(func(f *flag.Flag) {
-		if c.inherited[f.Name] {
-			return
+// restoreFlags undoes the flags the previous dispatch of the tree rooted
+// at c set, putting each back to the value it held before that dispatch
+// parsed it, latest first, so a root flag set at two levels ends at the
+// value it held before either. It then forgets them, so a flag the
+// previous dispatch did not set is never touched.
+func (c *Command) restoreFlags() {
+	for _, undo := range slices.Backward(c.undo) {
+		undo()
+	}
+	c.undo = nil
+}
+
+// undoer returns a function that puts f back to the value it holds now,
+// or nil when the dispatcher does not restore f. A [StringsVar] flag gets
+// back its values and whether its next occurrence replaces them. Any other
+// flag that holds a value, which the flag package's own flags show by
+// implementing flag.Getter, is Set to its current String. A Value without
+// Get, such as one from flag.Func, carries its own state and is not
+// restored. The function panics when the flag's Set refuses that String.
+func undoer(cmd *Command, f *flag.Flag) func() {
+	if v, ok := f.Value.(*stringsValue); ok {
+		values, set := slices.Clone(*v.p), v.set
+		return func() { *v.p, v.set = values, set }
+	}
+	if _, ok := f.Value.(flag.Getter); !ok {
+		return nil
+	}
+	value := f.Value.String()
+	return func() {
+		if err := f.Value.Set(value); err != nil {
+			panic(fmt.Sprintf("cli: %s: flag --%s cannot be restored to %q: %v", cmd.path(), f.Name, value, err))
 		}
-		if v, ok := f.Value.(*stringsValue); ok {
-			v.reset()
-			return
-		}
-		if _, ok := f.Value.(flag.Getter); !ok || f.Value.String() == f.DefValue {
-			return
-		}
-		if err := f.Value.Set(f.DefValue); err != nil {
-			panic(fmt.Sprintf("cli: %s: flag --%s cannot be reset to its default %q: %v", c.path(), f.Name, f.DefValue, err))
-		}
-	})
+	}
 }
 
 // interleave splits a leaf's arguments into its flag arguments, in order,
@@ -137,23 +143,14 @@ func isBool(f *flag.Flag) bool {
 // rather than appending to it. Help lists the flag as "--name string" with
 // "(repeatable)" after its usage.
 func StringsVar(fs *flag.FlagSet, p *[]string, name string, value []string, usage string) {
-	v := &stringsValue{p: p, def: append([]string(nil), value...)}
-	v.reset()
-	fs.Var(v, name, usage)
+	*p = append([]string(nil), value...)
+	fs.Var(&stringsValue{p: p}, name, usage)
 }
 
 // stringsValue is the flag.Value behind [StringsVar].
 type stringsValue struct {
 	p   *[]string
-	def []string // the default, which each dispatch starts from
-	set bool     // whether Set has replaced the default
-}
-
-// reset makes *p a fresh copy of the default and re-arms the replacement of
-// the default by the next Set.
-func (v *stringsValue) reset() {
-	*v.p = append([]string(nil), v.def...)
-	v.set = false
+	set bool // whether Set has replaced the default
 }
 
 // Set appends s, first dropping the default on the flag's first occurrence.

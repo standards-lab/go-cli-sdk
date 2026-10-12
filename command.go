@@ -92,6 +92,7 @@ type Command struct {
 	required  []string    // flag names from Require, in order
 	exclusive [][]string  // flag groups from Exclusive, in order
 	uses      []graph.Ref // graph nodes from Use, in order
+	undo      []func()    // on the root: restores the flags the last dispatch set
 }
 
 // Flags returns the command's flag set, creating it on first use. The set

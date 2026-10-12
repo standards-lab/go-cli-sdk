@@ -81,21 +81,36 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 //     returns ExitFailure
 //   - a command that succeeds returns ExitOK
 //
+// A tree may be dispatched more than once. Each dispatch starts from the
+// flag values the tree held before the previous one: Run restores every
+// flag the previous dispatch set on the command line to the value it held
+// just before that dispatch parsed it, and touches no other flag, so a
+// value the program gave a flag variable after defining it survives, and
+// a single dispatch calls no Set beyond the command line's. A flag from
+// [StringsVar] gets back its values, and its next occurrence replaces them
+// again. A flag whose Value does not implement flag.Getter, such as one
+// from flag.Func or flag.BoolFunc, carries its own state and is not
+// restored. [Invocation.Changed], [Command.Require], and
+// [Command.Exclusive] see only the flags set in the current dispatch.
+//
 // Run panics at the start of the dispatch when any command in the tree has
 // declared [Command.Use] and no [WithGraph] option was given, whichever
-// command is selected.
+// command is selected, and when a flag being restored from the previous
+// dispatch refuses, in its Set, the String it had before that dispatch.
 func Run(ctx context.Context, root *Command, args []string, streams Streams, opts ...Option) int {
 	var o options
 	for _, opt := range opts {
 		opt(&o)
 	}
 	prepareTree(root, o.graph != nil)
+	root.restoreFlags()
 	cmd := root
 	var path []*Command
 	changed := make(map[string]bool)
 	for {
 		path = append(path, cmd)
-		rest, set, code, ok := parse(cmd, args, streams)
+		rest, set, undo, code, ok := parse(cmd, args, streams)
+		root.undo = append(root.undo, undo...)
 		if !ok {
 			return code
 		}
@@ -123,39 +138,46 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 }
 
 // parse parses args against cmd's flags and returns the positional
-// arguments left and the names of the flags args set. It parses with a
-// flag set made for this dispatch that shares the Values of cmd's own, so
-// the flags set count only this dispatch's, which a flag.FlagSet parsed
-// before would not forget. A parent's flags precede its subcommand, so parsing stops
+// arguments left, the names of the flags args set, and for each of those
+// the dispatcher restores, a function that puts it back to its value
+// before the parse, returned even when parsing fails part way. It parses
+// with a flag set made for this dispatch that shares the Values of cmd's
+// own, so the flags set count only this dispatch's, which a flag.FlagSet
+// parsed before would not forget. A parent's flags precede its subcommand, so parsing stops
 // at the first non-flag argument, which names it; a leaf's flags may come
 // anywhere among its positional arguments, up to a "--". When parsing ends
 // the dispatch, because help was asked for or a flag was wrong, it reports
 // that and returns ok false with the exit code.
-func parse(cmd *Command, args []string, streams Streams) (rest, set []string, code int, ok bool) {
+func parse(cmd *Command, args []string, streams Streams) (rest, set []string, undo []func(), code int, ok bool) {
 	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	undoers := make(map[string]func())
 	cmd.Flags().VisitAll(func(f *flag.Flag) {
 		fs.Var(f.Value, f.Name, f.Usage)
+		undoers[f.Name] = undoer(cmd, f)
 	})
 	var positional []string
 	if !cmd.isParent() {
 		args, positional = interleave(fs, args)
 	}
 	err := fs.Parse(args)
-	switch {
-	case errors.Is(err, flag.ErrHelp):
-		return nil, nil, process.Usage(streams.Stdout, help(cmd)), false
-	case err != nil:
-		return nil, nil, usageError(cmd, streams.Stderr, err), false
-	}
 	fs.Visit(func(f *flag.Flag) {
 		set = append(set, f.Name)
+		if u := undoers[f.Name]; u != nil {
+			undo = append(undo, u)
+		}
 	})
+	switch {
+	case errors.Is(err, flag.ErrHelp):
+		return nil, nil, undo, process.Usage(streams.Stdout, help(cmd)), false
+	case err != nil:
+		return nil, nil, undo, usageError(cmd, streams.Stderr, err), false
+	}
 	if cmd.isParent() {
-		return fs.Args(), set, process.ExitOK, true
+		return fs.Args(), set, undo, process.ExitOK, true
 	}
 	// interleave left only flags and their values, so fs.Args() is empty.
-	return positional, set, process.ExitOK, true
+	return positional, set, undo, process.ExitOK, true
 }
 
 // execute checks the leaf's positional argument count, its flag groups,

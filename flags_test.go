@@ -214,6 +214,57 @@ func TestRun_RedispatchStartsFromDefaults(t *testing.T) {
 	}
 }
 
+// countingValue is a flag.Getter string Value that counts its Set calls.
+type countingValue struct {
+	s    string
+	sets int
+}
+
+func (v *countingValue) Set(s string) error { v.s = s; v.sets++; return nil }
+func (v *countingValue) String() string     { return v.s }
+func (v *countingValue) Get() any           { return v.s }
+
+// programValueTree returns a tree prog { leaf } whose leaf flags --n and
+// --mode the program changed after defining them, as a default read from
+// the environment would.
+func programValueTree() (root *cli.Command, n *int, mode *countingValue) {
+	leaf := &cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}
+	n = new(int)
+	leaf.Flags().IntVar(n, "n", 3, "a number")
+	*n = 5
+	mode = &countingValue{s: "a"}
+	leaf.Flags().Var(mode, "mode", "a mode")
+	mode.s = "b"
+	return (&cli.Command{Name: "prog"}).Add(leaf), n, mode
+}
+
+func TestRun_SingleDispatchKeepsProgramValues(t *testing.T) {
+	root, n, mode := programValueTree()
+
+	r := dispatch(t, root, "leaf")
+
+	if r.code != process.ExitOK {
+		t.Fatalf("code = %d, stderr = %q, want %d", r.code, r.stderr, process.ExitOK)
+	}
+	if *n != 5 || mode.s != "b" || mode.sets != 0 {
+		t.Errorf("--n, --mode, Set calls = %d, %q, %d, want 5, b, 0", *n, mode.s, mode.sets)
+	}
+}
+
+func TestRun_RedispatchRestoresProgramValues(t *testing.T) {
+	root, n, mode := programValueTree()
+
+	first := dispatch(t, root, "leaf", "--n", "7", "--mode", "c")
+	second := dispatch(t, root, "leaf")
+
+	if first.code != process.ExitOK || second.code != process.ExitOK {
+		t.Fatalf("codes = %d, %d, want %d, %d", first.code, second.code, process.ExitOK, process.ExitOK)
+	}
+	if *n != 5 || mode.s != "b" {
+		t.Errorf("--n, --mode = %d, %q, want 5, b", *n, mode.s)
+	}
+}
+
 func TestRun_NestedParentFlagsStayLocal(t *testing.T) {
 	f := newFixture(nil)
 
