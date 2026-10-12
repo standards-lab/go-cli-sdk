@@ -68,7 +68,7 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
 
 ## Progress
 
-slices 4/4 committed · standards — · spec — · editor —
+slices 4/4 committed · standards done · spec — · editor —
 
 ## Decisions
 
