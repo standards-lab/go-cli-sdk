@@ -16,8 +16,8 @@ The source is spike-cli-architecture's `cli` package
 
 ## Capability map
 
-Nothing is built yet. The code and `doc.go` become authoritative as each capability lands, and
-an unbuilt capability gains written detail when a session is about to build it.
+Every capability below is built, as of v0.1.0. The code, `doc.go`, and the README are
+authoritative for each; this list only names them.
 
 - **Dispatcher and flags**: commands on the standard library's `flag`.
 - **Generated help and `Footer`**.
@@ -25,4 +25,5 @@ an unbuilt capability gains written detail when a session is about to build it.
   graph nodes it declares.
 - **`Validate`**.
 - **`Streams` and `Run`'s exit codes**.
-- **CI and release**: CI runs `mise run check` on every pull request; releases are `v*` tags.
+- **CI and release**: CI runs `mise run check` on every pull request and push to `main`;
+  releases are `v*` tags.

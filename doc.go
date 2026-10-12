@@ -11,8 +11,9 @@
 //
 //   - [Command], one node of a command tree, a parent or a leaf; its
 //     Footer appends the command's own text to its generated help, its
-//     Args counts a leaf's positional arguments, and its Validate checks
-//     a leaf's input, arguments and flag values, before anything is built
+//     Args counts a leaf's positional arguments, its Validate checks a
+//     leaf's input, arguments and flag values, before anything is built,
+//     and the root's PreRun runs work every command shares
 //   - [Command.Add], which attaches subcommands
 //   - [Command.Flags], which returns the command's flag set; flags defined
 //     on the root are root flags, accepted at any depth
@@ -31,18 +32,35 @@
 //     gives Run the graph that declared nodes are built from
 //   - [StringsVar], which defines a repeatable string flag
 //   - [NoArgs] and [ExactArgs], the positional-argument validators
-//   - [UsageError], an error reported with the command's usage
+//   - [UsageError], an error reported with the command's usage, with
+//     [UsageError.Error] and [UsageError.Unwrap]
 //   - [Usagef], which returns a formatted UsageError
+//
+// # Help and flags
+//
+// Every command's help is generated from the tree and printed on -h or
+// --help, or when a parent runs with no subcommand or an unknown one; a
+// command's Footer appends its own text. There is no help command and no
+// completion command, and flags have long names only: the dispatcher has
+// no shorthand flags, with -h beside --help the one exception. Requested
+// help and every usage error return go-core's ExitUsage; any other failure
+// returns ExitFailure, and success ExitOK.
 //
 // # Dependencies
 //
 // A command's dependencies are part of the command: [Command.Use] declares
 // the [graph.Node] values it needs, inherited along the command path, and
-// [Run] builds the union a leaf's path declares from the [WithGraph] graph
-// and runs the leaf under a [lifecycle.Coordinator] only once the dispatch
-// reaches it, so help, a usage error, or a PreRun error builds nothing. The
-// leaf reads each value with [Invocation.Get]. A leaf whose path declares
-// no nodes runs with no Build and no lifecycle.
+// [Run] builds only the union a leaf's path declares, from the [WithGraph]
+// graph, and runs the leaf under a [lifecycle.Coordinator]'s Exec only once
+// the dispatch reaches it, so help, a usage error, or a PreRun error builds
+// nothing. The leaf reads each value with [Invocation.Get]. A leaf whose
+// path declares no nodes runs with no Build and no lifecycle.
+//
+// Under the lifecycle, a built value that implements [lifecycle.Monitored]
+// ends the running command's context when it reports a failure, and Run
+// reports that failure with go-core's "run:" label; a failure to start or
+// to shut down the built System is reported with "startup:" or
+// "shutdown:". Each returns ExitFailure.
 //
 // # Dispatch order
 //
@@ -54,6 +72,7 @@
 // before the Build, so input the dispatcher or Validate refuses builds
 // nothing.
 //
-// The package imports the standard library and go-core, whose graph and
-// lifecycle packages it builds and runs a leaf's dependencies with.
+// The package depends on the standard library and go-core only, whose
+// graph, lifecycle, and process packages it builds, runs, and exits with;
+// depguard holds that line in the check.
 package cli
