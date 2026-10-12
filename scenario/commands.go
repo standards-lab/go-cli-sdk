@@ -20,14 +20,13 @@ import (
 // [WriteListing] writes.
 //
 // A leaf runs its scenario's steps in order, each under a heading its
-// [Reporter] prints, and stops at the first step that fails, which it
-// returns as "step i (intent): err"; the dispatcher labels it with the
+// [Reporter] prints, and stops at the first step that fails, returning
+// "step i (intent): err". The dispatcher prefixes that error with the
 // command's path, so the report names the scenario and the step, and the
 // run exits with go-core's ExitFailure. A step fails when its action
-// returns an error, or when the command's context has ended by the time
-// its action returns, whatever the action returned: the runner checks the
-// context after each action, not the action, and err is then the
-// context's error. No heading or step runs after the step that fails.
+// returns an error, or when its action returns nil after the command's
+// context has ended, in which case err is the context's error. No heading
+// or step runs after the step that fails.
 //
 // Commands panics on a wiring mistake: no scenarios, two scenarios with
 // one name, or a scenario with no steps, naming the scenario.
@@ -56,15 +55,15 @@ func Commands(scenarios ...Scenario) []*cli.Command {
 
 // WriteListing writes the listing of scenarios to w, as a help Footer
 // prints it: a Scenarios heading, then for each scenario, in the order
-// given, a line with its name and summary, followed by a uses line naming
-// each node the scenario declares once, in the order it first declares
-// it, as the dispatcher builds each once. A scenario that declares no
-// nodes gets no uses line. It is
-// the one source of the listing, which the scenario parent's help ends
-// with, and which a root's Footer can call so the root's help ends with it
-// too. It prints what a scenario declares, not the nodes those reach: the
-// graph discovers a node's dependencies only by running its constructor,
-// and the listing builds nothing.
+// given, a line with its name and summary and a uses line naming its
+// nodes. The uses line names each node once, in the order the scenario
+// first declares it, since the dispatcher builds each once; a scenario
+// that declares no nodes gets no uses line. The scenario parent's help
+// ends with the listing, and a root's Footer can call WriteListing so the
+// root's help ends with it too. The listing names only the nodes a
+// scenario declares, not the nodes those depend on: the graph discovers a
+// node's dependencies only by running its constructor, and WriteListing
+// builds nothing.
 //
 // The columns are laid out as package cli lays out a help section, by a
 // tabwriter with a padding of 3, so in the scenario parent's help the

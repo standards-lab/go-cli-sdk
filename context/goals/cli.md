@@ -194,7 +194,7 @@ Release       go-cli-sdk v0.2.0, then go-cli-sdk-template
 
 ## Progress
 
-slices 0/7 committed · standards — · spec — · editor — · go-cli-sdk v0.2.0 —
+slices 2/7 committed · go-cli-sdk: standards ✓ · spec ✓ (1 gap closed) · editor ✓ · v0.2.0 release brief pending
 
 ## Decisions
 
@@ -293,6 +293,16 @@ slices 0/7 committed · standards — · spec — · editor — · go-cli-sdk v0
 - template: go-cli-sdk v0.2.0 is published, merged, and tagged after its slices pass review and
   the architect accepts its release brief, before the template's slices start, so the template
   pins the released version with no replace directive.
+- template: `scenario.WriteListing` omits the uses line for a scenario with no nodes, and names a
+  node declared twice once, by Name, in first-declared order.
+- template: `Reporter.Note` wraps at 80 runes, not bytes.
+- template: the runner fails the step under way when the context has ended after its action
+  returns nil; when the action returns an error, that error wins over the context's.
+- template: `Reporter.Show` prints a blank line of output empty, with no indent.
+- template: a scenario node whose constructor fails is reported with cli's and go-core's
+  existing label for a Build error, not "startup:".
+- template: `scenario.Commands` panics with "scenario: Commands with no scenarios",
+  "scenario: duplicate scenario %q", or "scenario: scenario %q has no steps".
 
 ## Pending edits
 

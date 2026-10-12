@@ -8,12 +8,12 @@ import (
 	"unicode/utf8"
 )
 
-// Reporter writes a scenario's narration: a heading per step, which the
-// runner prints, and under it, from the step, prose saying what it does
-// and why, with [Reporter.Note], and the output its operation produced,
-// with [Reporter.Show]. It writes plain text, with no color, to the
-// scenario command's standard output. The runner makes the Reporter each
-// step receives; a Reporter's zero value is not usable.
+// Reporter writes a scenario's narration as plain text, with no color, to
+// the scenario command's standard output. The runner prints a heading per
+// step, set off from the step before it by a blank line; under it, the
+// step prints prose saying what it does and why with [Reporter.Note], and
+// the output its operation produced with [Reporter.Show]. The runner makes
+// the Reporter each step receives; a Reporter's zero value is not usable.
 type Reporter struct {
 	w       io.Writer
 	atBlank bool // whether the line just written was blank
@@ -33,8 +33,8 @@ func (r *Reporter) heading(i, n int, intent string) {
 }
 
 // Note prints prose formatted as fmt.Sprintf formats it, indented two
-// spaces and wrapped at 80 columns, the indent included, breaking only at
-// whitespace: one call is one description, however many lines it takes. A
+// spaces and wrapped at 80 columns, the indent included, counting a rune
+// as one column and breaking only at whitespace: one call is one description, however many lines it takes. A
 // newline in the prose is a hard break, and an empty line between two
 // paragraphs prints as one blank line.
 func (r *Reporter) Note(format string, args ...any) {
@@ -90,8 +90,7 @@ func (r *Reporter) blank() {
 	r.atBlank = true
 }
 
-// wrap breaks text into lines of at most width columns, a column being a
-// rune, breaking only at
+// wrap breaks text into lines of at most width runes, breaking only at
 // whitespace: a word longer than width stands alone on a line that exceeds
 // it rather than being split. A newline in text is a hard break, so a
 // paragraph wraps on its own and an empty line between two stays empty.

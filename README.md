@@ -21,12 +21,10 @@ It depends on the standard library and
   flags, input validation, and per-command composition: a command declares the graph nodes it
   needs, and `Run` builds only those and runs the command under go-core's lifecycle, returning
   go-core's exit codes. Its `doc.go` lists every exported name.
-- `scenario` — a runner of narrated scenarios, a tool's guided tours of its own commands, as
-  `<tool> scenario <name>` leaves. It holds no scenarios itself: a tool keeps its own in one
-  root-level package named `scenarios`, mounts `scenario.Commands(scenarios...)` at its root
-  with `root.Add`, and calls `scenario.WriteListing` from its root's `Footer` so the root's help
-  ends with the listing. Each scenario builds only the graph nodes it declares, and a `Reporter`
-  narrates its steps as plain text. Its `doc.go` lists every exported name.
+- `scenario` — a runner of a tool's narrated scenarios, guided tours of its own commands, run as
+  `<tool> scenario <name>` leaves. Each scenario builds only the graph nodes it declares, and a
+  `Reporter` narrates its steps as plain text. A tool keeps its scenarios in its own package; its
+  `doc.go` states how the tool mounts them and lists every exported name.
 
 ## Development
 

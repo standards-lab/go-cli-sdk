@@ -17,9 +17,10 @@ commands, on package `cli`.
   its ordered `scenario.Step`s, each an intent sentence and an action over the declared nodes.
 - `scenario.Commands`, which builds the `scenario` parent with one leaf per scenario, for a root
   to mount with `root.Add`; each leaf declares its scenario's nodes with `Use`, so a scenario
-  builds only those. The steps run in order and stop at the first failing action, reported as
-  `step i (intent): err`. `Commands` panics on a wiring mistake: no scenarios, a duplicate
-  name, or a scenario with no steps.
+  builds only those. The steps run in order and stop at the first that fails, reported as
+  `step i (intent): err`. A step fails when its action returns an error, or when the command's
+  context has ended by the time its action returns nil. `Commands` panics on a wiring mistake:
+  no scenarios, a duplicate name, or a scenario with no steps.
 - `scenario.WriteListing`, which writes the listing of the scenarios and the nodes each
   declares; the scenario parent's help ends with it, and a root's `Footer` can call it.
 - `scenario.Reporter`, which narrates a run as plain text: a `[i/n] intent` heading per step,
