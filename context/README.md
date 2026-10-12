@@ -10,10 +10,7 @@ The README and each package's `doc.go` document this repository. The
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md) standard states the principles it follows.
 This context records only working knowledge the code and the README do not express.
 
-go-cli-sdk is the root of the `cli` goal, whose record is `context/goals/cli.md`. The CLI
-architecture pages are drafted in this `context/` and move into `architecture` at cli's sync:
-`cli-applications.md` is the Go Elemental "CLI applications" principle page.
-The source is spike-cli-architecture's `cli` package
+go-cli-sdk's source is spike-cli-architecture's `cli` package
 ([github.com/JaimeStill/spike-cli-architecture](https://github.com/JaimeStill/spike-cli-architecture), archived).
 
 ## Capability map
