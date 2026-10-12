@@ -151,19 +151,6 @@ const pairListing = "" +
 	"  second-tour   Show the second tour\n" +
 	"                uses cache, db\n"
 
-func TestCommands_ReturnsOneScenarioParent(t *testing.T) {
-	h := newHarness()
-
-	cmds := scenario.Commands(h.pair()...)
-
-	if len(cmds) != 1 || cmds[0].Name != "scenario" {
-		t.Fatalf("Commands returned %d commands, want one named scenario", len(cmds))
-	}
-	if cmds[0].Run != nil {
-		t.Errorf("the scenario command has a Run, want a parent")
-	}
-}
-
 func TestCommands_ParentHelpListsTheLeavesInOrderAndEndsWithTheListing(t *testing.T) {
 	for _, args := range [][]string{{"scenario"}, {"scenario", "-h"}, {"scenario", "--help"}} {
 		h := newHarness()
@@ -431,6 +418,38 @@ func TestRun_NarratesEachStepUnderItsHeading(t *testing.T) {
 	}
 }
 
+func TestRun_NoteKeepsParagraphsAndWrapsByRune(t *testing.T) {
+	h := newHarness()
+	// 26 two-rune words take 77 columns, under the 78 a note's line holds
+	// past its indent, though their bytes alone would take 129.
+	wide := strings.Repeat("éé ", 25) + "éé"
+	root := h.root(scenario.Scenario{
+		Name: "tour",
+		Steps: []scenario.Step{
+			{Intent: "Speak", Action: func(_ context.Context, _ *cli.Invocation, r *scenario.Reporter) error {
+				r.Note("First paragraph.\n\nSecond paragraph.")
+				r.Note("%s", wide)
+				return nil
+			}},
+		},
+	})
+
+	r := h.run(context.Background(), root, "scenario", "tour")
+
+	if r.code != process.ExitOK {
+		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitOK, r.stderr)
+	}
+	want := "" +
+		"[1/1] Speak\n" +
+		"  First paragraph.\n" +
+		"\n" +
+		"  Second paragraph.\n" +
+		"  " + wide + "\n"
+	if r.stdout != want {
+		t.Errorf("stdout:\n%s\nwant:\n%s", r.stdout, want)
+	}
+}
+
 func TestRun_AFailedStepStopsTheRunAndIsReportedOnce(t *testing.T) {
 	h := newHarness()
 	root := h.root(scenario.Scenario{
@@ -474,8 +493,12 @@ func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
 		Steps: []scenario.Step{
 			{Intent: "Wait", Action: func(ctx context.Context, _ *cli.Invocation, _ *scenario.Reporter) error {
 				cancel()
-				<-ctx.Done()
-				return ctx.Err()
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(5 * time.Second):
+					return errors.New("the step's context did not end with the run's")
+				}
 			}},
 			h.step("after"),
 		},

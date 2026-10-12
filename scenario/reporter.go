@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 )
 
 // Reporter writes a scenario's narration: a heading per step, which the
 // runner prints, and under it, from the step, prose saying what it does
 // and why, with [Reporter.Note], and the output its operation produced,
-// with [Reporter.Show]. It writes plain text, with no color, to one
-// writer.
+// with [Reporter.Show]. It writes plain text, with no color, to the
+// scenario command's standard output. The runner makes the Reporter each
+// step receives; a Reporter's zero value is not usable.
 type Reporter struct {
 	w       io.Writer
 	atBlank bool // whether the line just written was blank
@@ -30,8 +32,11 @@ func (r *Reporter) heading(i, n int, intent string) {
 	r.printf("[%d/%d] %s\n", i, n, intent)
 }
 
-// Note prints prose, wrapped at columns with every line indented: one call
-// is one description, however many lines it takes.
+// Note prints prose formatted as fmt.Sprintf formats it, indented two
+// spaces and wrapped at 80 columns, the indent included, breaking only at
+// whitespace: one call is one description, however many lines it takes. A
+// newline in the prose is a hard break, and an empty line between two
+// paragraphs prints as one blank line.
 func (r *Reporter) Note(format string, args ...any) {
 	for _, line := range wrap(fmt.Sprintf(format, args...), columns-len(indent)) {
 		if line == "" {
@@ -42,7 +47,7 @@ func (r *Reporter) Note(format string, args ...any) {
 	}
 }
 
-// Show prints what render writes as a block indented one level past the
+// Show prints what render writes as a block indented four spaces, past the
 // prose, so a step's result reads apart from its narration: render is
 // typically the same output the direct command the step stands for writes.
 // Nothing is printed when render fails, and its error is returned.
@@ -61,13 +66,11 @@ func (r *Reporter) Show(render func(io.Writer) error) error {
 	return nil
 }
 
-// printf is the one write every channel goes through; a reporter has no
-// way to act on a failed write, so the result is discarded here. Only
-// blank's own call ever passes the bare "\n" format, so that is what
-// atBlank tracks.
+// printf writes one or more non-blank lines; a reporter has no way to act
+// on a failed write, so the result is discarded here, as in blank.
 func (r *Reporter) printf(format string, args ...any) {
 	_, _ = fmt.Fprintf(r.w, format, args...)
-	r.atBlank = format == "\n"
+	r.atBlank = false
 	r.started = true
 }
 
@@ -78,10 +81,12 @@ func (r *Reporter) blank() {
 	if r.atBlank || !r.started {
 		return
 	}
-	r.printf("\n")
+	_, _ = io.WriteString(r.w, "\n")
+	r.atBlank = true
 }
 
-// wrap breaks text into lines of at most width columns, breaking only at
+// wrap breaks text into lines of at most width columns, a column being a
+// rune, breaking only at
 // whitespace: a word longer than width stands alone on a line that exceeds
 // it rather than being split. A newline in text is a hard break, so a
 // paragraph wraps on its own and an empty line between two stays empty.
@@ -101,14 +106,15 @@ func wrapParagraph(para string, width int) []string {
 		return []string{""}
 	}
 	var lines []string
-	line := words[0]
+	line, n := words[0], utf8.RuneCountInString(words[0])
 	for _, word := range words[1:] {
-		if len(line)+1+len(word) > width {
+		w := utf8.RuneCountInString(word)
+		if n+1+w > width {
 			lines = append(lines, line)
-			line = word
+			line, n = word, w
 			continue
 		}
-		line += " " + word
+		line, n = line+" "+word, n+1+w
 	}
 	return append(lines, line)
 }
