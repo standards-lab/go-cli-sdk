@@ -1,6 +1,6 @@
 # goal · cli
 
-- **State:** building
+- **State:** brief ready
 - **Task:** template
 - **Branch:** template
 
