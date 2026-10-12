@@ -44,6 +44,7 @@
 //	    notes.txt
 //	    todo.txt
 //
-// The steps run in order and stop at the first failing action, and
-// [Commands] panics on a wiring mistake, as its documentation states.
+// The steps run in order and stop at the first failing step, which a
+// context that ends fails too, and [Commands] panics on a wiring mistake,
+// as its documentation states.
 package scenario

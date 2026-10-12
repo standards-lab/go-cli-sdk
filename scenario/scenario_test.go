@@ -517,6 +517,102 @@ func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
 	}
 }
 
+func TestRun_AContextThatEndsUnderAStepThatReturnsNilFailsThatStep(t *testing.T) {
+	tests := []struct {
+		name   string
+		at     int    // the step, from 1, whose action cancels the context
+		stderr string // the report
+		stdout string // the narration
+	}{
+		{"a step before the last", 1, "prog scenario tour: step 1 (one): " + context.Canceled.Error() + "\n", "[1/2] one\n"},
+		{"the last step", 2, "prog scenario tour: step 2 (two): " + context.Canceled.Error() + "\n", "[1/2] one\n\n[2/2] two\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			// Each action records itself, cancels the run's context at its
+			// step, ignores the context, and returns nil.
+			step := func(n int, intent string) scenario.Step {
+				return scenario.Step{Intent: intent, Action: func(context.Context, *cli.Invocation, *scenario.Reporter) error {
+					h.rec.add("step " + intent)
+					if n == tt.at {
+						cancel()
+					}
+					return nil
+				}}
+			}
+			root := h.root(scenario.Scenario{
+				Name:  "tour",
+				Nodes: []graph.Ref{h.db},
+				Steps: []scenario.Step{step(1, "one"), step(2, "two")},
+			})
+
+			r := h.run(ctx, root, "scenario", "tour")
+
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if r.stderr != tt.stderr {
+				t.Errorf("stderr = %q, want %q", r.stderr, tt.stderr)
+			}
+			if r.stdout != tt.stdout {
+				t.Errorf("stdout = %q, want %q: no heading after the step under way", r.stdout, tt.stdout)
+			}
+			if got, want := h.rec.matching("step "), []string{"step one", "step two"}[:tt.at]; !slices.Equal(got, want) {
+				t.Errorf("steps = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestCommands_TheListingNamesANodeDeclaredTwiceOnce(t *testing.T) {
+	h := newHarness()
+	root := h.root(scenario.Scenario{
+		Name:    "tour",
+		Summary: "Show the tour",
+		Nodes:   []graph.Ref{h.db, h.cache, h.db},
+		Steps:   []scenario.Step{h.step("one")},
+	})
+
+	r := h.run(context.Background(), root, "scenario", "--help")
+
+	if r.code != process.ExitUsage {
+		t.Errorf("code = %d, want %d", r.code, process.ExitUsage)
+	}
+	want := "Scenarios:\n" +
+		"  tour   Show the tour\n" +
+		"         uses db, cache\n"
+	if !strings.HasSuffix(r.stdout, "\n\n"+want) {
+		t.Errorf("help:\n%s\nwant it to end with:\n%s", r.stdout, want)
+	}
+}
+
+func TestRun_ShowLeavesTheRendersBlankLinesEmpty(t *testing.T) {
+	h := newHarness()
+	root := h.root(scenario.Scenario{
+		Name: "tour",
+		Steps: []scenario.Step{
+			{Intent: "Show", Action: func(_ context.Context, _ *cli.Invocation, r *scenario.Reporter) error {
+				return r.Show(func(w io.Writer) error {
+					_, err := fmt.Fprint(w, "first\n\n\nsecond\n")
+					return err
+				})
+			}},
+		},
+	})
+
+	r := h.run(context.Background(), root, "scenario", "tour")
+
+	if r.code != process.ExitOK {
+		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitOK, r.stderr)
+	}
+	if want := "[1/1] Show\n    first\n\n\n    second\n"; r.stdout != want {
+		t.Errorf("stdout = %q, want %q", r.stdout, want)
+	}
+}
+
 func TestCommands_PanicsOnAWiringMistake(t *testing.T) {
 	h := newHarness()
 	steps := []scenario.Step{h.step("one")}

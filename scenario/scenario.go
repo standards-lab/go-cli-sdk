@@ -49,16 +49,18 @@ func command(s Scenario) *cli.Command {
 
 // run runs s's steps in order with inv, the scenario command's Invocation,
 // narrating each intent through a Reporter over inv.Stdout before its
-// action. It stops at the first action that returns an error, which it
-// returns naming the step by its number and its intent, so a failed run's
-// report says which beat failed; the dispatcher labels it with the
-// command's path, which names the scenario. Every action works through
-// ctx, so a ctx that ends fails the step under way, which names it.
+// action, as [Commands] states. After each action it checks ctx itself,
+// so an action that ignores ctx, or ends it and returns nil, still fails
+// its step, before the next heading prints.
 func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 	r := &Reporter{w: inv.Stdout}
 	for i, step := range s.Steps {
 		r.heading(i+1, len(s.Steps), step.Intent)
-		if err := step.Action(ctx, inv, r); err != nil {
+		err := step.Action(ctx, inv, r)
+		if err == nil {
+			err = ctx.Err()
+		}
+		if err != nil {
 			return fmt.Errorf("step %d (%s): %w", i+1, step.Intent, err)
 		}
 	}

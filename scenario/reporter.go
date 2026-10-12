@@ -50,7 +50,8 @@ func (r *Reporter) Note(format string, args ...any) {
 // Show prints what render writes as a block indented four spaces, past the
 // prose, so a step's result reads apart from its narration: render is
 // typically the same output the direct command the step stands for writes.
-// Nothing is printed when render fails, and its error is returned.
+// A blank line in the output prints empty, with no indent. Nothing is
+// printed when render fails, and its error is returned.
 func (r *Reporter) Show(render func(io.Writer) error) error {
 	var buf bytes.Buffer
 	if err := render(&buf); err != nil {
@@ -61,6 +62,10 @@ func (r *Reporter) Show(render func(io.Writer) error) error {
 		return nil
 	}
 	for line := range strings.SplitSeq(text, "\n") {
+		if line == "" {
+			r.printf("\n")
+			continue
+		}
 		r.printf("%s%s%s\n", indent, indent, line)
 	}
 	return nil
