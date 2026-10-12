@@ -1,13 +1,13 @@
 # goal · cli
 
-- **State:** building
-- **Task:** sdk
-- **Branch:** sdk
+- **State:** idle
+- **Task:** none
+- **Branch:** none
 
 ## Tasks
 
 1. [x] role-interfaces
-2. [ ] sdk
+2. [x] sdk
 3. [ ] template
 
 ## Task brief · sdk
@@ -126,10 +126,6 @@ Door          one-way for the go-cli-sdk v0.1.0 tag, since its
               two-way.
 Release       go-cli-sdk v0.1.0
 ```
-
-## Progress
-
-slices 4/4 committed · standards ✓ · spec ✓ · editor ✓
 
 ## Decisions
 
