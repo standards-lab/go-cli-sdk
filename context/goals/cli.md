@@ -194,7 +194,7 @@ Release       go-cli-sdk v0.2.0, then go-cli-sdk-template
 
 ## Progress
 
-slices 2/7 committed · go-cli-sdk: standards ✓ · spec ✓ (1 gap closed) · editor ✓ · v0.2.0 release brief pending
+slices 2/7 committed · go-cli-sdk: standards ✓ · spec ✓ · editor ✓ · v0.2.0 released (PR #3, 9e5a907) · template: standards — · spec — · editor —
 
 ## Decisions
 
