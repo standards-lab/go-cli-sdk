@@ -64,7 +64,7 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
 
 ## Progress
 
-slices 3/4 committed · standards — · spec — · editor —
+slices 4/4 committed · standards — · spec — · editor —
 
 ## Decisions
 
@@ -95,6 +95,9 @@ slices 3/4 committed · standards — · spec — · editor —
 - role-interfaces: upgrade slices take jdx/mise-action v5.1.2 in go-core and go-web-sdk, a patch
   with nothing to adapt.
 - role-interfaces: go-cli-sdk's failing currency (no mise.toml) is left to the sdk task.
+- role-interfaces: go-web-sdk builds against the local go-core branch through a temporary
+  `replace => ../go-core` (go.sum emptied by tidy); SHIP drops it once go-core v0.8.0 is tagged,
+  then `go get go-core@v0.8.0` and `go mod tidy` before go-web-sdk publishes.
 
 ## Pending edits
 
