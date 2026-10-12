@@ -7,63 +7,124 @@
 ## Tasks
 
 1. [x] role-interfaces
-2. [ ] sdk
+2. [x] sdk
 3. [ ] template
 
-## Task brief · role-interfaces
+## Task brief · sdk
 
 ```
-Problem       go-core's Coordinator turns every graph node value with
-              Ready() bool into a readiness check, so a value "ready" in
-              another sense, such as a reactor source, joins /readyz by
-              accident. v1.messaging moves those sources into go-core,
-              and go-cli-sdk builds on the go-core release that settles
-              the rule.
-Behaviors     1. Coordinator.Checks holds one Check for each node value
-                 that implements both Starter and ReadinessChecker,
-                 named by its node, in layer order and then definition
-                 order.
-              2. A node value with Ready() bool and no Start yields no
-                 Check.
-              3. A Starter with Ready yields a Check whether or not it
-                 also implements Stopper.
-              4. A *lifecycle.Readiness yields no Check, and Readiness
-                 reports its Coordinator's narrowed Checks.
-              5. RegisterHealth's /readyz over a Coordinator, or a
-                 Readiness bound to one, lists "lifecycle" and then only
-                 the Starter checks; a non-Starter Ready node is absent
-                 from the 200 and 503 bodies.
-              6. go-core's lifecycle docs and go-web-sdk's RegisterHealth
-                 doc state the Starter-only rule; each CHANGELOG records
-                 its release, with go-core's marked Breaking.
-              7. go-core exports lifecycle.ReadyStarter, Starter plus
-                 ReadinessChecker, as the set Checks is inferred from,
-                 with a compile-time proof; v0.8.0's CHANGELOG lists it
-                 under Added.
-Test seams    lifecycle.New(sys, cfg).Checks() over a built graph.System;
-              RegisterHealth's /readyz over HTTP for behavior 5
-Slices        1. go-core upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
-                 done when mise run currency exits 0 and the check
-                 passes
-              2. go-web-sdk upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
-                 done when mise run currency exits 0 and the check
-                 passes
-              3. go-core: checks only from Starters, with docs and
-                 CHANGELOG v0.8.0. The lifecycle tests show a Ready-only
-                 node missing from Checks and a Start+Ready node present
-                 (behaviors 1-4, 6, 7)
-              4. go-web-sdk on go-core v0.8.0: the RegisterHealth doc and
-                 CHANGELOG v0.15.2. A /readyz test over a graph with a
-                 Ready-only node shows it absent (behaviors 5, 6)
-Out of scope  Source[T] and the reactor (v1.messaging core-reactor);
-              go-web-service's Wake comment (v1.messaging
-              service-reactors); web.Doctor's home; lifecycle.Subsystem;
-              go-observability and go-database; go-web-sdk-template's
-              requirement; middleware/rate-limit; go-cli-sdk's code and
-              its mise.toml (sdk task)
-Door          one-way for the go-core v0.8.0 and go-web-sdk v0.15.2 tags;
-              the code and doc changes before tagging are two-way
-Release       go-core v0.8.0; go-web-sdk v0.15.2
+Problem       The Elemental Architecture's second application type
+              has no SDK. CLIs still run on cobra, and the template
+              and slab wait on a released go-cli-sdk. The spike
+              proved the API, and go-core v0.8.0 now has the graph
+              and lifecycle it needs. go-cli-sdk holds no code, no
+              check, no CI, and no currency command.
+Behaviors     1. A leaf accepts its flags before, between, and
+                 after its positional arguments, up to a "--".
+                 Flags defined on the root are accepted at any
+                 depth and set one value. A command below the root
+                 that redefines a root flag panics at dispatch.
+              2. A dispatch to a leaf checks Args, then Require,
+                 then Exclusive, then Validate, then runs the
+                 root's PreRun, builds the declared nodes, and
+                 runs the leaf. It stops at the first failure, and
+                 a failure before the build builds nothing.
+              3. -h or --help, or a parent run with no subcommand,
+                 prints the generated help to stdout and returns
+                 go-core's ExitUsage. The help lists the
+                 subcommands, the command's own flags, and the
+                 global flags as --name, with required, repeatable,
+                 and default markers, then what the command's
+                 Footer writes. There is no help or completion
+                 command and no shorthand flag.
+              4. These print to stderr with the command's short
+                 usage and return ExitUsage: an unknown command or
+                 flag, a malformed flag value, a rejected argument
+                 count, a missing required flag, two flags of one
+                 exclusive group, any Validate error, and a
+                 UsageError anywhere in PreRun's or Run's error
+                 chain. Any other error prints once and returns
+                 ExitFailure. Success returns ExitOK.
+              5. Invocation.Changed reports a flag given on the
+                 command line, even at its default value. A
+                 StringsVar flag appends each occurrence, and the
+                 first occurrence replaces the default.
+              6. A leaf whose path declares nodes with Use builds
+                 their union once each, plus WithGraph's lifecycle
+                 config node, from WithGraph's graph. It runs under
+                 go-core's Coordinator and shuts down in reverse
+                 order on success, on error, and when the context
+                 ends. A leaf whose path declares nothing builds
+                 nothing. Use anywhere in a tree with no WithGraph
+                 panics at dispatch, whichever command is selected.
+              7. Invocation.Get returns a declared node's value. It
+                 panics, naming the command and the node, on a nil
+                 node, on a node the path didn't declare (even one
+                 the build reached as a dependency), and on a read
+                 before the build.
+              8. A build or startup failure is reported once, with
+                 go-core's labels ("startup: <node>: <err>",
+                 "shutdown: ..."), returns ExitFailure, and shuts
+                 down whatever had started. A Monitored node's
+                 failure ends the running command's context.
+              9. The module requires go-core v0.8.0 and imports
+                 only the standard library, go-core, and itself. A
+                 depguard rule in the check fails any other
+                 import.
+              10. The check runs in CI on every pull request into
+                  main and every push to it. A pushed v* tag
+                  creates a GitHub release from that version's
+                  changelog section. The currency command exits 0.
+                  The repository's merge waits on
+                  `gh pr checks --watch`, and its ci wait follows
+                  main's push run.
+              11. go-cli-sdk's GitHub settings match go-core's: a
+                  "main" ruleset that requires a pull request and
+                  forbids deleting or force-pushing the branch
+                  (org-admin bypass), Dependabot security updates
+                  on, merge commits only, and branches deleted on
+                  merge.
+              12. The package comment lists every exported name.
+                  The README gives the standard, the package, and
+                  development. CHANGELOG v0.1.0 records the first
+                  release. The context capability map marks each
+                  capability built.
+Test seams    cli.Run(ctx, root, args, Streams over buffers,
+              WithGraph(...)), read through its exit code and the
+              stdout and stderr buffers (behaviors 1-8). The check,
+              the currency command, CI, and `gh api` reads of the
+              repository settings cover behaviors 9-11.
+Slices        1. Scaffolding and CI: the module on go 1.27 and
+                 go-core v0.8.0, mise tasks (check, currency,
+                 upgrade, conveniences), lint with depguard, the CI
+                 and release workflows, CHANGELOG [Unreleased], the
+                 restored CI-gated merge and ci wait, and the GitHub
+                 settings. Done when mise run currency exits 0 and
+                 the check passes (behaviors 9-11)
+              2. Dispatcher: the command tree, flags, root flags,
+                 StringsVar, NoArgs and ExactArgs, Require and
+                 Exclusive, Changed, UsageError, generated help and
+                 Footer, Streams, and Run's exit codes. The ported
+                 dispatcher tests pass over buffers (behaviors 1-5)
+              3. Per-command composition: Use, WithGraph, Get, and
+                 Validate before the build, under go-core's
+                 Coordinator. The ported composition tests show
+                 declared-only builds, reverse shutdown, and
+                 "startup:" reporting (behaviors 6-8)
+              4. Docs and release: the package comment inventory,
+                 the README, CHANGELOG v0.1.0, and the capability
+                 map (behavior 12)
+Out of scope  go-cli-sdk-template and its settings (template task);
+              an App type or a scenario runner in the SDK; a help
+              or completion command, shorthand flags, or a Long
+              counterpart; any change to go-core or go-web-sdk;
+              moving the CLI architecture pages (cli's sync); slab
+              (slab goal)
+Door          one-way for the go-cli-sdk v0.1.0 tag, since its
+              import path and API reach the module proxy. Code,
+              docs, CI, and the GitHub settings before the tag are
+              two-way.
+Release       go-cli-sdk v0.1.0
 ```
 
 ## Decisions
@@ -108,6 +169,35 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
   `lifecycle/readiness_test.go`, the external `lifecycle_test` package, beside the package's other
   compile-time interface proofs.
 
+- sdk: package `cli` sits at go-cli-sdk's module root (github.com/standards-lab/go-cli-sdk), as
+  go-web-sdk's `web` does; rejected a `cli/` subdirectory, which adds a path segment to every
+  import of an application SDK whose packages keep short names.
+- sdk: v0.1.0 ports spike-cli-architecture's exported `cli` API as it stands, re-pointed at
+  go-core v0.8.0's graph and lifecycle; rejected revising it before the first tag, since the spike
+  proved it and nothing in it has a standard library replacement (flag.Func can't replace
+  StringsVar's default on first set or mark it repeatable).
+- sdk: architecture's dependencies.md names go-cli-sdk's depguard as the one place a lint enforces
+  the dependency line; rejected leaving the page saying no lint does.
+- sdk: go-cli-sdk's GitHub settings (the "main" ruleset, Dependabot security updates, merge
+  commits only, delete branch on merge) are applied in the CI slice before v0.1.0 is tagged;
+  rejected handing them to the session as a note, since release-and-ci.md requires the ruleset in
+  every repository.
+- sdk: go.mod gains its go-core v0.8.0 require in the dispatcher slice, not the scaffolding
+  slice, since the check's `go mod tidy -diff` rejects a require nothing imports.
+- sdk: go-core v0.8.0's labels replace the spike's in reported errors: "startup: <node>: <err>",
+  "shutdown: drain timeout after ...", and "run: ..." for a Monitored failure.
+- sdk: a tree may be dispatched more than once. Each dispatch parses a fresh flag set, so
+  Changed, Require, and Exclusive see only its flags, and first restores, newest first, only the
+  flags the previous dispatch set, or that a failed parse wrote, to their pre-dispatch values. A
+  single dispatch calls no Set beyond the command line's and keeps program-assigned values;
+  flag.Func, flag.BoolFunc, and other Values without flag.Getter are never restored; a restore
+  whose Set rejects the captured String panics, as Run's doc comment states. Rejected resetting
+  every flag to its DefValue, which overwrote program-assigned values on a single dispatch.
+- sdk: the Monitored-failure test's leaf returns nil once its context ends, so stderr holds one
+  "run:" line; returning ctx.Err() would join "context canceled" to it.
+- sdk: the capability map and CHANGELOG say CI runs on pull requests and on pushes to main,
+  matching ci.yml.
+
 ## Pending edits
 
 - architecture · `standards/go-elemental/principles/lifecycle-and-context.md`: a readiness check
@@ -116,3 +206,12 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
   (go-core lifecycle, Starter + ReadinessChecker, implemented by DB, Store, admin.Service,
   Reactor, read by `Coordinator.Checks`), point ReadinessChecker's "Read by" at it, and make the
   "Readiness checks come only from Starters" rule name `lifecycle.ReadyStarter`.
+- architecture · `standards/go-elemental/principles/dependencies.md`: the paragraph saying no
+  lint, build check, or CI step enforces the line names go-cli-sdk as the exception. A depguard
+  rule in its check holds the module to the standard library and go-core, so an import outside
+  that line fails the check and CI. Every other repository holds the line by discipline and review.
+- standards-lab · `context/cli-applications.md` ("The plan", the go-cli-sdk bullet): go-cli-sdk
+  v0.1.0 is built, so the bullet states that it provides package `cli` over the standard library
+  and go-core, links its README and `doc.go` for the API and the left-out features in place of
+  listing them, and keeps only why the `App` type stays in the template's `internal/app` and why
+  the scenario runner is the tool's own package, promoted only on fit.
