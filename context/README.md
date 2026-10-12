@@ -1,11 +1,12 @@
 # go-cli-sdk
 
 go-cli-sdk is the command-line application SDK of Go Elemental, the Standards Lab
-organization's Go implementation of the Elemental Architecture. Its package `cli` is a
+organization's Go implementation of the Elemental Architecture. Its root package `cli` is a
 dispatcher on the standard library's `flag` whose commands build only the go-core graph nodes
-they declare, under go-core's lifecycle; it depends on the standard library and go-core only.
+they declare, under go-core's lifecycle, and its package `scenario` runs a tool's narrated
+scenarios on it; the module depends on the standard library and go-core only.
 
-The README and the package's `doc.go` document this repository. The
+The README and each package's `doc.go` document this repository. The
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md) standard states the principles it follows.
 This context records only working knowledge the code and the README do not express.
 
@@ -16,7 +17,7 @@ The source is spike-cli-architecture's `cli` package
 
 ## Capability map
 
-Every capability below is built, as of v0.1.0. The code, `doc.go`, and the README are
+Every capability below is built, as of v0.2.0. The code, `doc.go`, and the README are
 authoritative for each; this list only names them.
 
 - **Dispatcher and flags**: commands on the standard library's `flag`.
@@ -25,5 +26,7 @@ authoritative for each; this list only names them.
   graph nodes it declares.
 - **`Validate`**.
 - **`Streams` and `Run`'s exit codes**.
+- **Scenario runner**: package `scenario`, whose `Commands` and `WriteListing` mount a tool's
+  narrated scenarios as `<tool> scenario <name>` leaves.
 - **CI and release**: CI runs `mise run check` on every pull request and push to `main`;
   releases are `v*` tags.
