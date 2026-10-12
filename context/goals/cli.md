@@ -1,8 +1,8 @@
 # goal · cli
 
-- **State:** idle
-- **Task:** none
-- **Branch:** none
+- **State:** building
+- **Task:** role-interfaces
+- **Branch:** role-interfaces
 
 ## Tasks
 
@@ -38,23 +38,33 @@ Behaviors     1. Coordinator.Checks holds one Check for each node value
                  its release, with go-core's marked Breaking.
 Test seams    lifecycle.New(sys, cfg).Checks() over a built graph.System;
               RegisterHealth's /readyz over HTTP for behavior 5
-Slices        1. go-core: checks only from Starters, with docs and
+Slices        1. go-core upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
+                 done when mise run currency exits 0 and the check
+                 passes
+              2. go-web-sdk upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
+                 done when mise run currency exits 0 and the check
+                 passes
+              3. go-core: checks only from Starters, with docs and
                  CHANGELOG v0.8.0. The lifecycle tests show a Ready-only
                  node missing from Checks and a Start+Ready node present
                  (behaviors 1-4, 6)
-              2. go-web-sdk on go-core v0.8.0: the RegisterHealth doc and
+              4. go-web-sdk on go-core v0.8.0: the RegisterHealth doc and
                  CHANGELOG v0.15.2. A /readyz test over a graph with a
                  Ready-only node shows it absent (behaviors 5, 6)
-              No upgrade slices: go-core and go-web-sdk are current.
 Out of scope  Source[T] and the reactor (v1.messaging core-reactor);
               go-web-service's Wake comment (v1.messaging
               service-reactors); web.Doctor's home; lifecycle.Subsystem;
               go-observability and go-database; go-web-sdk-template's
-              requirement; middleware/rate-limit; go-cli-sdk's code
+              requirement; middleware/rate-limit; go-cli-sdk's code and
+              its mise.toml (sdk task)
 Door          one-way for the go-core v0.8.0 and go-web-sdk v0.15.2 tags;
               the code and doc changes before tagging are two-way
 Release       go-core v0.8.0; go-web-sdk v0.15.2
 ```
+
+## Progress
+
+slices 0/4 committed · standards — · spec — · editor —
 
 ## Decisions
 
@@ -82,6 +92,9 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
 - role-interfaces: go-web-sdk releases v0.15.2; rejected v0.16.0, since its code and importers'
   builds are unchanged.
 - sdk: builds on go-core v0.8.0.
+- role-interfaces: upgrade slices take jdx/mise-action v5.1.2 in go-core and go-web-sdk, a patch
+  with nothing to adapt.
+- role-interfaces: go-cli-sdk's failing currency (no mise.toml) is left to the sdk task.
 
 ## Pending edits
 
