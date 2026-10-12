@@ -6,6 +6,26 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the module
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-10-12
+
+Adds package `scenario`, which runs a tool's narrated scenarios, its guided tours of its own
+commands, on package `cli`.
+
+### Added
+
+- `scenario.Scenario`, one narrated tour: a name, a summary, the graph nodes it declares, and
+  its ordered `scenario.Step`s, each an intent sentence and an action over the declared nodes.
+- `scenario.Commands`, which builds the `scenario` parent with one leaf per scenario, for a root
+  to mount with `root.Add`; each leaf declares its scenario's nodes with `Use`, so a scenario
+  builds only those. The steps run in order and stop at the first that fails, reported as
+  `step i (intent): err`. A step fails when its action returns an error, or when the command's
+  context has ended by the time its action returns nil. `Commands` panics on a wiring mistake:
+  no scenarios, a duplicate name, or a scenario with no steps.
+- `scenario.WriteListing`, which writes the listing of the scenarios and the nodes each
+  declares; the scenario parent's help ends with it, and a root's `Footer` can call it.
+- `scenario.Reporter`, which narrates a run as plain text: a `[i/n] intent` heading per step,
+  `Reporter.Note` for wrapped prose, and `Reporter.Show` for a step's output, indented apart.
+
 ## [v0.1.0] - 2026-10-12
 
 The first release: package `cli`, a command dispatcher on the standard library's `flag` whose
@@ -38,5 +58,6 @@ commands build only the go-core graph nodes they declare, on go-core v0.8.0.
 - CI runs `mise run check` on every pull request and push to `main`; a `v*` tag publishes a
   GitHub release.
 
-[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/go-cli-sdk/releases/tag/v0.1.0
