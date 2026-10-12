@@ -74,8 +74,11 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 //     group, any error Validate returns, or a [UsageError] that PreRun or
 //     the command returns is reported on stderr with the command's usage
 //     and returns ExitUsage
-//   - any other error PreRun or the command returns, or a Build, start, or
-//     shutdown error, is reported once on stderr and returns ExitFailure
+//   - any other error PreRun or the command returns, a Build error, or a
+//     failure the [lifecycle.Coordinator] reports, to start, of a
+//     [lifecycle.Monitored] value while the leaf runs, which also ends the
+//     leaf's context, or to shut down, is reported once on stderr and
+//     returns ExitFailure
 //   - a command that succeeds returns ExitOK
 //
 // Run panics at the start of the dispatch when any command in the tree has
