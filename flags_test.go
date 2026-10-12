@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/process"
@@ -262,6 +263,26 @@ func TestRun_RedispatchRestoresProgramValues(t *testing.T) {
 	}
 	if *n != 5 || mode.s != "b" {
 		t.Errorf("--n, --mode = %d, %q, want 5, b", *n, mode.s)
+	}
+}
+
+func TestRun_MalformedFlagValueIsRestored(t *testing.T) {
+	leaf := &cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}
+	var n int
+	leaf.Flags().IntVar(&n, "n", 3, "a number")
+	n = 5
+	d := leaf.Flags().Duration("d", time.Second, "a duration")
+	root := (&cli.Command{Name: "prog"}).Add(leaf)
+
+	badN := dispatch(t, root, "leaf", "--n", "x")
+	badD := dispatch(t, root, "leaf", "--d", "bogus")
+	next := dispatch(t, root, "leaf")
+
+	if badN.code != process.ExitUsage || badD.code != process.ExitUsage || next.code != process.ExitOK {
+		t.Fatalf("codes = %d, %d, %d, want %d, %d, %d", badN.code, badD.code, next.code, process.ExitUsage, process.ExitUsage, process.ExitOK)
+	}
+	if n != 5 || *d != time.Second {
+		t.Errorf("--n, --d = %d, %v, want 5, 1s", n, *d)
 	}
 }
 

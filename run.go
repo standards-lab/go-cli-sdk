@@ -140,21 +140,25 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 // parse parses args against cmd's flags and returns the positional
 // arguments left, the names of the flags args set, and for each of those
 // the dispatcher restores, a function that puts it back to its value
-// before the parse, returned even when parsing fails part way. It parses
-// with a flag set made for this dispatch that shares the Values of cmd's
-// own, so the flags set count only this dispatch's, which a flag.FlagSet
-// parsed before would not forget. A parent's flags precede its subcommand, so parsing stops
-// at the first non-flag argument, which names it; a leaf's flags may come
-// anywhere among its positional arguments, up to a "--". When parsing ends
-// the dispatch, because help was asked for or a flag was wrong, it reports
+// before the parse. The undo functions are returned even when parsing
+// fails part way, and then also cover a flag whose malformed value its
+// Set wrote anyway. It parses with a flag set made for this dispatch that
+// shares the Values of cmd's own, so the flags set count only this
+// dispatch's, which a flag.FlagSet parsed before would not forget. A
+// parent's flags precede its subcommand, so parsing stops at the first
+// non-flag argument, which names it; a leaf's flags may come anywhere
+// among its positional arguments, up to a "--". When parsing ends the
+// dispatch, because help was asked for or a flag was wrong, it reports
 // that and returns ok false with the exit code.
 func parse(cmd *Command, args []string, streams Streams) (rest, set []string, undo []func(), code int, ok bool) {
 	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	undoers := make(map[string]func())
+	before := make(map[string]string) // each flag's String before the parse
 	cmd.Flags().VisitAll(func(f *flag.Flag) {
 		fs.Var(f.Value, f.Name, f.Usage)
 		undoers[f.Name] = undoer(cmd, f)
+		before[f.Name] = f.Value.String()
 	})
 	var positional []string
 	if !cmd.isParent() {
@@ -167,6 +171,16 @@ func parse(cmd *Command, args []string, streams Streams) (rest, set []string, un
 			undo = append(undo, u)
 		}
 	})
+	if err != nil {
+		// A flag whose Set failed is not visited, yet the flag package's
+		// numeric Values write their variable before reporting the error,
+		// so any other restorable flag whose String changed is kept too.
+		fs.VisitAll(func(f *flag.Flag) {
+			if u := undoers[f.Name]; u != nil && !slices.Contains(set, f.Name) && f.Value.String() != before[f.Name] {
+				undo = append(undo, u)
+			}
+		})
+	}
 	switch {
 	case errors.Is(err, flag.ErrHelp):
 		return nil, nil, undo, process.Usage(streams.Stdout, help(cmd)), false
