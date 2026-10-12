@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"testing"
 	"time"
@@ -89,7 +90,7 @@ func TestGet_ReturnsEachDeclaredNodesValue(t *testing.T) {
 			if r.code != process.ExitOK {
 				t.Fatalf("code = %d, want %d; stderr %q", r.code, process.ExitOK, r.stderr)
 			}
-			if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+			if !maps.Equal(got, tt.want) {
 				t.Errorf("Get returned %v, want %v", got, tt.want)
 			}
 		})

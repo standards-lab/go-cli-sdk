@@ -391,8 +391,9 @@ func TestWithGraph_PanicsOnNil(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			defer func() {
-				if r := recover(); r == nil {
-					t.Error("WithGraph did not panic")
+				want := "cli: WithGraph with a nil graph or lifecycle config node"
+				if r := recover(); r != want {
+					t.Errorf("panic = %v, want %q", r, want)
 				}
 			}()
 			call()
