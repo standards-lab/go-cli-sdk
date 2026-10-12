@@ -1,6 +1,6 @@
 # goal · cli
 
-- **State:** building
+- **State:** brief ready
 - **Task:** role-interfaces
 - **Branch:** role-interfaces
 
@@ -68,7 +68,7 @@ Release       go-core v0.8.0; go-web-sdk v0.15.2
 
 ## Progress
 
-slices 4/4 committed · standards done · spec — · editor —
+slices 4/4 committed · standards done · spec done · editor done
 
 ## Decisions
 
@@ -105,6 +105,12 @@ slices 4/4 committed · standards done · spec — · editor —
 - role-interfaces: go-core exports `lifecycle.ReadyStarter` (Starter + ReadinessChecker) in
   v0.8.0, so a value that must stay in /readyz can prove it at compile time; rejected adding it
   later or never, since the rule now hinges on the pair. Named ReadyStarter, not StartReadier.
+- role-interfaces: go-web-sdk's readiness tests define `toggleStarter`, a `toggleChecker` with a
+  no-op `Start`, for every node that must appear on /readyz, and keep `toggleChecker` as the
+  Ready-only node that must not.
+- role-interfaces: the `var _ lifecycle.ReadyStarter = probed(nil)` proof lives in
+  `lifecycle/readiness_test.go`, the external `lifecycle_test` package, beside the package's other
+  compile-time interface proofs.
 
 ## Pending edits
 
@@ -112,4 +118,5 @@ slices 4/4 committed · standards done · spec — · editor —
   is inferred only from a Starter that implements Ready, a `lifecycle.ReadyStarter`.
 - standards-lab · `context/cli-applications.md` ("Role interfaces"): add a ReadyStarter row
   (go-core lifecycle, Starter + ReadinessChecker, implemented by DB, Store, admin.Service,
-  Reactor, read by `Coordinator.Checks`), and point ReadinessChecker's "Read by" at it.
+  Reactor, read by `Coordinator.Checks`), point ReadinessChecker's "Read by" at it, and make the
+  "Readiness checks come only from Starters" rule name `lifecycle.ReadyStarter`.
