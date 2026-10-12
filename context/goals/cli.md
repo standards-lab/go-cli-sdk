@@ -1,14 +1,14 @@
 # goal · cli
 
-- **State:** building
-- **Task:** template
-- **Branch:** template
+- **State:** idle
+- **Task:** none
+- **Branch:** none
 
 ## Tasks
 
 1. [x] role-interfaces
 2. [x] sdk
-3. [ ] template
+3. [x] template
 
 ## Task brief · template
 
@@ -192,10 +192,6 @@ Release       go-cli-sdk v0.2.0, then go-cli-sdk-template
               template/v0.1.0
 ```
 
-## Progress
-
-slices 2/7 committed · go-cli-sdk: standards ✓ · spec ✓ (1 gap closed) · editor ✓ · v0.2.0 release brief pending
-
 ## Decisions
 
 - plan: go-cli-sdk is cli's root, not go-core: the CLI architecture pages are drafted in the
@@ -303,21 +299,92 @@ slices 2/7 committed · go-cli-sdk: standards ✓ · spec ✓ (1 gap closed) · 
   existing label for a Build error, not "startup:".
 - template: `scenario.Commands` panics with "scenario: Commands with no scenarios",
   "scenario: duplicate scenario %q", or "scenario: scenario %q has no steps".
+- template: the template has no depguard rule; rejected one, since a rule naming the module path
+  breaks a gonew copy and a generated CLI adds its own dependencies. go-cli-sdk's depguard stays
+  the one lint enforcing the dependency line.
+- template: the template keeps no placeholder files after slice 4; the check needs a package to
+  run, and slice 4 adds the first.
+- template: the go directive is `go 1.27`, as in go-web-sdk-template.
+- template: CI's integration job runs `mise run integration`, the task a developer runs.
+- template: `integration.Main` unsets every inherited `APP_` variable before the build, since
+  processtest passes the parent's environment to each run.
+- template: the starter README's identity steps also rename the `./cmd/app` the integration
+  harness builds and the harness's `envPrefix` in `integration/harness.go`.
+- template: the CHANGELOG headings are unprefixed (`[v0.1.0]`), since the release action strips
+  `template/` from the tag before it looks the section up.
+- template: `TestNew_IsCold` proves New builds nothing by calling Halt, whose Replace panics on a
+  graph that has built; rejected an observer added after New, which can't see a build in New.
+- template: the note's "The layout" and "Conventions" sections are cut at sync and link the
+  architecture page, since the page and the template now hold them.
+- template: an unknown command prints go-cli-sdk's unknown-command line and the root help on
+  stderr and exits 2; the brief's "short usage" for it is the root's help, and a leaf's usage
+  error prints the leaf's short usage.
 
 ## Pending edits
 
+- architecture · `standards/go-elemental/principles/cli-applications.md`: a new page, go-cli-sdk's
+  `context/cli-applications.md` as drafted.
+- architecture · `standards/go-elemental/principles/README.md`: add
+  `- [CLI applications](cli-applications.md)` after Domain package files.
+- architecture · `standards/go-elemental/README.md` ("Principles"): add, after Domain package
+  files, "[CLI applications](principles/cli-applications.md) states the conventions particular to
+  a command-line tool: the composition root's layer files, a command building only the nodes it
+  declares, exit codes and command words, and opt-in scenarios."
+- architecture · `standards/go-elemental/README.md` ("Member repositories"): add an Application
+  SDKs row after go-web-sdk, "[go-cli-sdk](https://github.com/standards-lab/go-cli-sdk) | The SDK
+  for Go Elemental command-line tools: a dispatcher on the standard library's `flag` whose
+  commands build only the graph nodes they declare, and the scenario runner.", and a Templates
+  row after go-web-sdk-template,
+  "[go-cli-sdk-template](https://github.com/standards-lab/go-cli-sdk-template) | Scaffolds an
+  initial Go Elemental CLI, engine-free, with the composition root as one file per layer and the
+  integration tier in place."
+- architecture · `standards/go-elemental/principles/topology-and-naming.md` ("Application-layer
+  import direction", the paragraph opening "This is an Application-layer principle"): "a CLI
+  composes its own `internal/app` the same way" links
+  `cli-applications.md#the-composition-roots-layer-files`.
+- architecture · `standards/go-elemental/principles/tests-and-docs.md` ("The unit tier"): the
+  sentence on `internal/apptest` names go-cli-sdk-template's
+  [`template/internal/apptest`](https://github.com/standards-lab/go-cli-sdk-template/blob/main/template/internal/apptest)
+  in place of spike-cli-architecture's.
+- architecture · `standards/go-elemental/principles/tests-and-docs.md` ("Integration and
+  acceptance suites"): the bullet "The template's and go-web-service's integration tier" names
+  go-web-sdk-template, go-cli-sdk-template, and go-web-service, and says the tier runs the built
+  program as a subprocess, black-box, a service through its API and a CLI through its arguments,
+  its two output streams, and its exit code; "the template is engine-free" becomes "the templates
+  are engine-free". The paragraph after the list adds a CLI's surfaces to the service's.
+- architecture · `standards/go-elemental/principles/release-and-ci.md`: "the template and
+  go-web-service vet, fix, and lint" becomes "both templates and go-web-service"; "The template's
+  check runs inside its `template/` subtree" becomes "Each template's check"; "the template's and
+  go-web-service's `integration` job" becomes "both templates' and go-web-service's"; and in "What
+  ships in a module zip", "The template is the deliberate exception: its module boundary" becomes
+  "The templates are the deliberate exception: each one's module boundary".
 - architecture · `standards/go-elemental/principles/lifecycle-and-context.md`: a readiness check
   is inferred only from a Starter that implements Ready, a `lifecycle.ReadyStarter`.
-- standards-lab · `context/cli-applications.md` ("Role interfaces"): add a ReadyStarter row
-  (go-core lifecycle, Starter + ReadinessChecker, implemented by DB, Store, admin.Service,
-  Reactor, read by `Coordinator.Checks`), point ReadinessChecker's "Read by" at it, and make the
-  "Readiness checks come only from Starters" rule name `lifecycle.ReadyStarter`.
 - architecture · `standards/go-elemental/principles/dependencies.md`: the paragraph saying no
   lint, build check, or CI step enforces the line names go-cli-sdk as the exception. A depguard
   rule in its check holds the module to the standard library and go-core, so an import outside
   that line fails the check and CI. Every other repository holds the line by discipline and review.
+- standards-lab · `context/cli-applications.md` ("Role interfaces"): add a ReadyStarter row
+  (go-core lifecycle, Starter + ReadinessChecker, implemented by DB, Store, admin.Service,
+  Reactor, read by `Coordinator.Checks`), point ReadinessChecker's "Read by" at it, and make the
+  "Readiness checks come only from Starters" rule name `lifecycle.ReadyStarter`.
 - standards-lab · `context/cli-applications.md` ("The plan", the go-cli-sdk bullet): go-cli-sdk
-  v0.1.0 is built, so the bullet states that it provides package `cli` over the standard library
-  and go-core, links its README and `doc.go` for the API and the left-out features in place of
-  listing them, and keeps only why the `App` type stays in the template's `internal/app` and why
-  the scenario runner is the tool's own package, promoted only on fit.
+  v0.2.0 provides package `cli` and the `scenario` runner over the standard library and go-core;
+  the bullet links its [README](https://github.com/standards-lab/go-cli-sdk/blob/main/README.md)
+  and [`doc.go`](https://github.com/standards-lab/go-cli-sdk/blob/main/doc.go) for the API and the
+  left-out features in place of listing them, and keeps only why the `App` type stays in the
+  template's `internal/app`, as in web.
+- standards-lab · `context/cli-applications.md` ("The layout" and "Conventions"): cut both
+  sections, which the architecture's CLI applications page and go-cli-sdk-template now state, and
+  link that page in their place; keep only what the slab goal still needs from them. Scenarios
+  are opt-in, on go-cli-sdk's `scenario` runner with a tool's root-level `scenarios` package, and
+  `output` stays each tool's own.
+- standards-lab · `context/roadmap.toml`: remove `goals.cli` and its `active` entry, and rewrite
+  the header comment's sentences on cli holding the exclusive slot.
+- standards-lab · `context/roadmap.toml` (`goals.slab` summary): slab's `demo` package becomes a
+  `scenarios` package on go-cli-sdk's `scenario` runner at its released tag (v0.2.0), in place of
+  consolidating `demo` and `scenario` into `scenario`; slab's colored output and scenario Needs
+  are planned in the slab goal.
+- go-cli-sdk · `context/cli-applications.md`: delete the draft once architecture holds the page.
+- go-cli-sdk · `context/README.md`: drop the sentences naming the cli goal record and the draft
+  page; keep the spike-cli-architecture source line.
