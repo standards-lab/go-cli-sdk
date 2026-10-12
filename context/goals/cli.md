@@ -36,6 +36,10 @@ Behaviors     1. Coordinator.Checks holds one Check for each node value
               6. go-core's lifecycle docs and go-web-sdk's RegisterHealth
                  doc state the Starter-only rule; each CHANGELOG records
                  its release, with go-core's marked Breaking.
+              7. go-core exports lifecycle.ReadyStarter, Starter plus
+                 ReadinessChecker, as the set Checks is inferred from,
+                 with a compile-time proof; v0.8.0's CHANGELOG lists it
+                 under Added.
 Test seams    lifecycle.New(sys, cfg).Checks() over a built graph.System;
               RegisterHealth's /readyz over HTTP for behavior 5
 Slices        1. go-core upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
@@ -47,7 +51,7 @@ Slices        1. go-core upgrade: jdx/mise-action v5.1.1 -> v5.1.2;
               3. go-core: checks only from Starters, with docs and
                  CHANGELOG v0.8.0. The lifecycle tests show a Ready-only
                  node missing from Checks and a Start+Ready node present
-                 (behaviors 1-4, 6)
+                 (behaviors 1-4, 6, 7)
               4. go-web-sdk on go-core v0.8.0: the RegisterHealth doc and
                  CHANGELOG v0.15.2. A /readyz test over a graph with a
                  Ready-only node shows it absent (behaviors 5, 6)
@@ -98,8 +102,14 @@ slices 4/4 committed · standards — · spec — · editor —
 - role-interfaces: go-web-sdk builds against the local go-core branch through a temporary
   `replace => ../go-core` (go.sum emptied by tidy); SHIP drops it once go-core v0.8.0 is tagged,
   then `go get go-core@v0.8.0` and `go mod tidy` before go-web-sdk publishes.
+- role-interfaces: go-core exports `lifecycle.ReadyStarter` (Starter + ReadinessChecker) in
+  v0.8.0, so a value that must stay in /readyz can prove it at compile time; rejected adding it
+  later or never, since the rule now hinges on the pair. Named ReadyStarter, not StartReadier.
 
 ## Pending edits
 
 - architecture · `standards/go-elemental/principles/lifecycle-and-context.md`: a readiness check
-  is inferred only from a Starter that implements Ready.
+  is inferred only from a Starter that implements Ready, a `lifecycle.ReadyStarter`.
+- standards-lab · `context/cli-applications.md` ("Role interfaces"): add a ReadyStarter row
+  (go-core lifecycle, Starter + ReadinessChecker, implemented by DB, Store, admin.Service,
+  Reactor, read by `Coordinator.Checks`), and point ReadinessChecker's "Read by" at it.
