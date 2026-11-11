@@ -34,7 +34,8 @@
 //     nodes are built from and the node that configures their lifecycle
 //   - [Program.Run], which dispatches the arguments and returns the exit
 //     code
-//   - [StringsVar], which defines a repeatable string flag
+//   - [StringsValue], which returns a repeatable string flag's
+//     flag.Value, for registering with the FlagSet's Var
 //   - [NoArgs] and [ExactArgs], the positional-argument validators
 //   - [UsageError], an error reported with the command's usage, with
 //     [UsageError.Error] and [UsageError.Unwrap]

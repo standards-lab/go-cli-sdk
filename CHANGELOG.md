@@ -6,6 +6,49 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the module
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-11
+
+A repeatable string flag is defined the way the standard library defines any custom flag: the
+`flag.Value` comes from `cli.StringsValue` and is registered with `fs.Var`. go-cli-sdk moves
+onto go-core v0.12.0.
+
+### Added
+
+- `cli.StringsValue(p *[]string, value []string) flag.Value`, the repeatable string flag's
+  value, registered with `fs.Var(cli.StringsValue(&tags, def), "tag", usage)`. It sets `*p` to
+  a copy of `value` before it returns; each occurrence appends to `*p`, and the first replaces
+  the default. Help and the restoring of flags between dispatches treat it as they treated a
+  `StringsVar` flag.
+
+### Changed
+
+- **Breaking:** the `go-core` requirement is v0.12.0, up from v0.11.0, which pulls its options
+  break into every importer's build: `reactor.New` takes a trailing `reactor.Options` and
+  `event.NewRecorder` an `event.Options` in place of variadic option functions, and
+  `reactor.CancelWithin` returns a `time.Duration`. go-core's changelog has the migration from
+  v0.11.0. The SDK calls neither.
+
+### Removed
+
+- **Breaking:** `cli.StringsVar`, in favor of `cli.StringsValue` registered through `fs.Var`.
+  There is no deprecated alias.
+
+### Migrating from v0.3.0
+
+- **`cli.StringsVar` becomes `fs.Var` with `cli.StringsValue`.** The flag set moves from the
+  first argument to the receiver, and the name and usage follow the value.
+
+  ```go
+  // v0.3.0
+  cli.StringsVar(cmd.Flags(), &tags, "tag", []string{"a"}, "tag to attach")
+
+  // v0.4.0
+  cmd.Flags().Var(cli.StringsValue(&tags, []string{"a"}), "tag", "tag to attach")
+  ```
+
+- **A program that calls `reactor.New` or `event.NewRecorder`** follows go-core's "Migrating
+  from v0.11.0": their option functions become fields of `reactor.Options` and `event.Options`.
+
 ## [v0.3.0] - 2026-11-11
 
 Moves go-cli-sdk onto go-core v0.11.0. A command tree is dispatched through `cli.Program`, which
@@ -117,7 +160,8 @@ commands build only the go-core graph nodes they declare, on go-core v0.8.0.
 - CI runs `mise run check` on every pull request and push to `main`; a `v*` tag publishes a
   GitHub release.
 
-[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/go-cli-sdk/releases/tag/v0.1.0
