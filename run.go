@@ -255,7 +255,9 @@ func execute(ctx context.Context, p Program, path []*Command, args []string, cha
 // A monitored failure is reported once. The leaf runs under a context
 // whose [context.Cause], once a monitored failure ends it, is that failure
 // labelled "run:", as the Coordinator labels it. When the leaf's error is
-// only its context's end, it is replaced by that cause; when the leaf's
+// only its context's end, it is replaced by that cause, a [runFailure];
+// a caller's own cause is not, so a context the caller ended reports
+// [context.Canceled] or [context.DeadlineExceeded]. When the leaf's
 // error then carries the failure, by returning the cause or wrapping it,
 // that error stands in place of the Coordinator's own "run:" report. A
 // leaf error unrelated to the failure is reported beside it, and a
@@ -274,8 +276,12 @@ func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 		leafCtx, stop := runContext(ctx, runCtx)
 		defer stop()
 		leafErr = cmd.Run(leafCtx, inv)
+		// The cause replaces the context's end only when it is still that
+		// end, as a monitored failure's is, not a caller's own cause.
 		if leafErr != nil && leafErr == leafCtx.Err() {
-			leafErr = context.Cause(leafCtx)
+			if cause := context.Cause(leafCtx); errors.Is(cause, leafErr) {
+				leafErr = cause
+			}
 		}
 		// The run context ended while the caller's did not: the
 		// Coordinator failed it with a monitored failure, its cause.
@@ -304,7 +310,7 @@ func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func())
 	stopAfter := context.AfterFunc(runCtx, func() {
 		cause := context.Cause(runCtx)
 		if ctx.Err() == nil {
-			cause = fmt.Errorf("run: %w", cause)
+			cause = runFailure{cause}
 		}
 		cancel(cause)
 	})
@@ -313,6 +319,22 @@ func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func())
 		cancel(nil)
 	}
 }
+
+// runFailure is a monitored failure as the cause of the leaf's context:
+// the failure labelled "run:", which is also [context.Canceled], the end it
+// gave the context. A cause that is still the context's end explains it,
+// so the leaf, or an action such as a scenario step's, may report the
+// cause in its place; a caller's own cause, which is not, is left out, and
+// the context's end is reported as the caller ended it.
+type runFailure struct{ err error }
+
+func (f runFailure) Error() string { return "run: " + f.err.Error() }
+
+func (f runFailure) Unwrap() error { return f.err }
+
+// Is reports whether target is [context.Canceled], the end a monitored
+// failure gives the leaf's context.
+func (f runFailure) Is(target error) bool { return target == context.Canceled }
 
 // leafContext is the context runContext returns: Context, detached from
 // run's cancellation and ended after run with the labelled cause, which

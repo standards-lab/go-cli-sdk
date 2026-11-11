@@ -484,36 +484,56 @@ func TestRun_AFailedStepStopsTheRunAndIsReportedOnce(t *testing.T) {
 }
 
 func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
-	h := newHarness()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	root := h.root(scenario.Scenario{
-		Name:  "tour",
-		Nodes: []graph.Ref{h.db},
-		Steps: []scenario.Step{
-			{Intent: "Wait", Action: func(ctx context.Context, _ *cli.Invocation, _ *scenario.Reporter) error {
-				cancel()
-				select {
-				case <-ctx.Done():
-					return ctx.Err()
-				case <-time.After(5 * time.Second):
-					return errors.New("the step's context did not end with the run's")
-				}
-			}},
-			h.step("after"),
-		},
-	})
-
-	r := h.run(ctx, root, "scenario", "tour")
-
-	if r.code != process.ExitFailure {
-		t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+	// A caller's cause is not the step's error: the step reports the
+	// context's end, with or without nodes under a lifecycle.
+	tests := []struct {
+		name  string
+		cause error // the caller's cause, nil for a plain cancel
+		nodes bool
+	}{
+		{"a plain cancel", nil, true},
+		{"a cancel with a cause", errors.New("operator interrupt"), true},
+		{"a plain cancel with no nodes", nil, false},
+		{"a cancel with a cause with no nodes", errors.New("operator interrupt"), false},
 	}
-	if want := "prog scenario tour: step 1 (Wait): " + context.Canceled.Error() + "\n"; r.stderr != want {
-		t.Errorf("stderr = %q, want %q", r.stderr, want)
-	}
-	if got := h.rec.matching("step "); len(got) != 0 {
-		t.Errorf("steps = %q, want the step after not run", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness()
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(nil)
+			var nodes []graph.Ref
+			if tt.nodes {
+				nodes = []graph.Ref{h.db}
+			}
+			root := h.root(scenario.Scenario{
+				Name:  "tour",
+				Nodes: nodes,
+				Steps: []scenario.Step{
+					{Intent: "Wait", Action: func(ctx context.Context, _ *cli.Invocation, _ *scenario.Reporter) error {
+						cancel(tt.cause)
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-time.After(5 * time.Second):
+							return errors.New("the step's context did not end with the run's")
+						}
+					}},
+					h.step("after"),
+				},
+			})
+
+			r := h.run(ctx, root, "scenario", "tour")
+
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if want := "prog scenario tour: step 1 (Wait): " + context.Canceled.Error() + "\n"; r.stderr != want {
+				t.Errorf("stderr = %q, want %q", r.stderr, want)
+			}
+			if got := h.rec.matching("step "); len(got) != 0 {
+				t.Errorf("steps = %q, want the step after not run", got)
+			}
+		})
 	}
 }
 

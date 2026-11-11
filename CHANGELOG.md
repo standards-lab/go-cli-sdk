@@ -31,7 +31,8 @@ line naming the node that failed.
   `<path>: step N (<intent>): run: <node>: <error>`, in place of `context canceled` followed by
   `run: <error>`. The leaf's context's `context.Cause` is that labelled failure, so a leaf that
   returns only its context's end, or wraps the cause, is reported once; an unrelated leaf error
-  is reported beside it.
+  is reported beside it. A context the caller ends, with or without a cause, still reports
+  `context canceled` or `context deadline exceeded`.
 - **Breaking:** requires go-core v0.11.0, up from v0.8.0, and carries its breaks to a program
   that defines its graph:
   - `graph.Scope.After` is removed; a node's order-only edges are declared at `Define` with

@@ -392,6 +392,53 @@ func TestUse_TheCallersDeadlineEndsTheCommandsContextAsADeadline(t *testing.T) {
 	}
 }
 
+func TestUse_ACallersCauseIsNotTheCommandsError(t *testing.T) {
+	// The caller's cause stays the context's: a leaf that returns only
+	// its context's end reports that end, as the caller gave it.
+	cause := errors.New("operator interrupt")
+	tests := []struct {
+		name string
+		// ctx returns the caller's context and the function the leaf calls
+		// to end it, which does nothing for a deadline.
+		ctx func(t *testing.T) (ctx context.Context, end func())
+		err error // the context's end the leaf reports
+	}{
+		{"a cancel with a cause", func(t *testing.T) (context.Context, func()) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+			t.Cleanup(func() { cancel(nil) })
+			return ctx, func() { cancel(cause) }
+		}, context.Canceled},
+		{"a deadline with a cause", func(t *testing.T) (context.Context, func()) {
+			ctx, cancel := context.WithDeadlineCause(context.Background(), time.Now().Add(20*time.Millisecond), cause)
+			t.Cleanup(cancel)
+			return ctx, func() {}
+		}, context.DeadlineExceeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newUseTree()
+			ctx, end := tt.ctx(t)
+			var gotCause error
+			u.body = func(ctx context.Context) error {
+				end()
+				<-ctx.Done()
+				gotCause = context.Cause(ctx)
+				return ctx.Err()
+			}
+			r := u.run(ctx, "data", "get", "--key", "k", "x")
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if want := "prog data get: " + tt.err.Error() + "\n"; r.stderr != want {
+				t.Errorf("stderr = %q, want %q", r.stderr, want)
+			}
+			if gotCause != cause {
+				t.Errorf("Cause = %v, want the caller's %v", gotCause, cause)
+			}
+		})
+	}
+}
+
 func TestUse_ShutdownTimeoutComesFromTheConfigNode(t *testing.T) {
 	u := newUseTree()
 	u.timeout = 20 * time.Millisecond

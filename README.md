@@ -20,7 +20,9 @@ It depends on the standard library and
 - `cli` — a dispatcher of command trees on `flag`, with generated help, required and exclusive
   flags, input validation, and per-command composition: a command declares the graph nodes it
   needs, and `Program.Run` builds only those and runs the command under go-core's lifecycle,
-  returning go-core's exit codes. `Command.Leaves` yields each leaf with the nodes a dispatch to
+  returning go-core's exit codes. A `Monitored` value's failure while a command runs is reported
+  on one line naming its node, as in `prog watch: run: watched: connection lost`, and a scenario
+  step's line names the step. `Command.Leaves` yields each leaf with the nodes a dispatch to
   it builds, so a composition root's layer test can build every leaf's set. Its `doc.go` lists
   every exported name.
 - `scenario` — a runner of a tool's narrated scenarios, guided tours of its own commands, run as

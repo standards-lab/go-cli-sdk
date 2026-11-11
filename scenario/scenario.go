@@ -2,6 +2,7 @@ package scenario
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/standards-lab/go-cli-sdk"
@@ -52,8 +53,9 @@ func command(s Scenario) *cli.Command {
 // action, as [Commands] states. After each action it checks ctx itself,
 // so an action that ignores ctx, or ends it and returns nil, still fails
 // its step, before the next heading prints. A step that fails with only
-// ctx's end fails with ctx's cause, so a monitored failure that ended it
-// is reported under the step.
+// ctx's end fails with ctx's cause when the cause is still that end, so a
+// monitored failure that ended it is reported under the step, and a
+// caller's own cause is not.
 func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 	r := &Reporter{w: inv.Stdout}
 	for i, step := range s.Steps {
@@ -63,9 +65,13 @@ func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 			err = ctx.Err()
 		}
 		// A step that reports only its context's end reports why it
-		// ended: the dispatcher's cause for a monitored failure names it.
+		// ended when the cause is still that end, as the dispatcher's
+		// cause for a monitored failure is; a caller's own cause is not
+		// reported, so the end reads as the caller gave it.
 		if err != nil && err == ctx.Err() {
-			err = context.Cause(ctx)
+			if cause := context.Cause(ctx); errors.Is(cause, err) {
+				err = cause
+			}
 		}
 		if err != nil {
 			return fmt.Errorf("step %d (%s): %w", i+1, step.Intent, err)
