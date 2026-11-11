@@ -25,8 +25,12 @@ import (
 // command's path, so the report names the scenario and the step, and the
 // run exits with go-core's ExitFailure. A step fails when its action
 // returns an error, or when its action returns nil after the command's
-// context has ended, in which case err is the context's error. No heading
-// or step runs after the step that fails.
+// context has ended, in which case err is the context's error. A step
+// whose error is only that end fails with the context's cause instead, so
+// when the failure of a value go-core's lifecycle monitors ended the run,
+// the one line reported names the step and the failure, as in
+// "step 1 (Wait): run: watched: connection lost". No heading or step runs
+// after the step that fails.
 //
 // Commands panics on a wiring mistake: no scenarios, two scenarios with
 // one name, or a scenario with no steps, naming the scenario.

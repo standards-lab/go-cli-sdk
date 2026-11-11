@@ -60,9 +60,13 @@
 //
 // Under the lifecycle, a built value that implements [lifecycle.Monitored]
 // ends the running command's context when it reports a failure, and Run
-// reports that failure with go-core's "run:" label and the failed node's
-// name; a failure to start or to shut down the built System is reported
-// with "startup:" or "shutdown:". Each returns ExitFailure.
+// reports that failure on one line with go-core's "run:" label and the
+// failed node's name, as in "prog watch: run: watched: connection lost".
+// The context's [context.Cause] is that labelled failure, so a command
+// that returns only its context's end, or wraps the cause, is not reported
+// twice; an unrelated error the command returns is reported beside the
+// failure. A failure to start or to shut down the built System is
+// reported with "startup:" or "shutdown:". Each returns ExitFailure.
 //
 // # Dispatch order
 //

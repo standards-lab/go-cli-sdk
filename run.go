@@ -8,6 +8,7 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/lifecycle"
@@ -73,7 +74,11 @@ type Program struct {
 //     failure the [lifecycle.Coordinator] reports, to start, of a
 //     [lifecycle.Monitored] value while the leaf runs, which also ends the
 //     leaf's context, or to shut down, is reported once on stderr and
-//     returns ExitFailure
+//     returns ExitFailure; a leaf that returns only its context's end, or
+//     the cause [context.Cause] gives for it, after a monitored failure
+//     ended it reports one line, the failure labelled "run:" and its
+//     node's name, and a leaf error unrelated to the failure is reported
+//     beside it
 //   - a command that succeeds returns ExitOK
 //
 // A tree may be dispatched more than once. Each dispatch starts from the
@@ -246,6 +251,15 @@ func execute(ctx context.Context, p Program, path []*Command, args []string, cha
 // with the System set on inv for [Invocation.Get]. The error is the
 // Build's, or the Coordinator's: startup's or the leaf's, joined with the
 // shutdown's.
+//
+// A monitored failure is reported once. The leaf runs under a context
+// whose [context.Cause], once a monitored failure ends it, is that failure
+// labelled "run:", as the Coordinator labels it. When the leaf's error is
+// only its context's end, it is replaced by that cause; when the leaf's
+// error then carries the failure, by returning the cause or wrapping it,
+// that error stands in place of the Coordinator's own "run:" report. A
+// leaf error unrelated to the failure is reported beside it, and a
+// context the caller ended is reported as its own error.
 func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if len(inv.uses) == 0 {
 		return cmd.Run(ctx, inv)
@@ -254,10 +268,91 @@ func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if err != nil {
 		return err
 	}
-	return lifecycle.New(sys, sys.Get(p.LifecycleConfig)).Exec(ctx, func(ctx context.Context) error {
+	var leafErr, failure error // failure is the monitored failure the leaf's error carries
+	err = lifecycle.New(sys, sys.Get(p.LifecycleConfig)).Exec(ctx, func(runCtx context.Context) error {
 		inv.system = sys
-		return cmd.Run(ctx, inv)
+		leafCtx, stop := runContext(ctx, runCtx)
+		defer stop()
+		leafErr = cmd.Run(leafCtx, inv)
+		if leafErr != nil && leafErr == leafCtx.Err() {
+			leafErr = context.Cause(leafCtx)
+		}
+		// The run context ended while the caller's did not: the
+		// Coordinator failed it with a monitored failure, its cause.
+		if ctx.Err() == nil && runCtx.Err() != nil && errors.Is(leafErr, context.Cause(runCtx)) {
+			failure = context.Cause(runCtx)
+			return nil
+		}
+		return leafErr
 	})
+	if failure == nil {
+		return err
+	}
+	return errors.Join(leafErr, without(err, failure))
+}
+
+// runContext returns the context the leaf runs under: one that carries
+// runCtx's values and deadline and ends when runCtx does, and whose cause,
+// when runCtx ends while ctx, the caller's, has not, is runCtx's cause
+// labelled "run:", the Coordinator's label for a monitored failure. A
+// context derived from runCtx would carry the cause unlabelled, so the
+// context is detached from runCtx's cancellation and ended, with the
+// labelled cause, by a function run after runCtx ends. stop releases the
+// context.
+func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func()) {
+	detached, cancel := context.WithCancelCause(context.WithoutCancel(runCtx))
+	stopAfter := context.AfterFunc(runCtx, func() {
+		cause := context.Cause(runCtx)
+		if ctx.Err() == nil {
+			cause = fmt.Errorf("run: %w", cause)
+		}
+		cancel(cause)
+	})
+	return leafContext{Context: detached, run: runCtx}, func() {
+		stopAfter()
+		cancel(nil)
+	}
+}
+
+// leafContext is the context runContext returns: Context, detached from
+// run's cancellation and ended after run with the labelled cause, which
+// [context.Cause] reads from it, with run's deadline.
+type leafContext struct {
+	context.Context
+	run context.Context
+}
+
+// Deadline returns run's deadline, which ends the context with run.
+func (c leafContext) Deadline() (time.Time, bool) {
+	return c.run.Deadline()
+}
+
+// Err waits, once run has ended, for the function that ends the context
+// after it, so the context ends as soon as run does: an action that ends
+// the run's context and returns sees the end at once, and its cause.
+func (c leafContext) Err() error {
+	if c.run.Err() != nil {
+		<-c.Done()
+	}
+	return c.Context.Err()
+}
+
+// without returns err with the Coordinator's report of the monitored
+// failure, the error that wraps failure, removed from the errors err
+// joins, and nil when nothing is left.
+func without(err, failure error) error {
+	if err == nil || errors.Is(errors.Unwrap(err), failure) {
+		return nil
+	}
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
+	}
+	var kept []error
+	for _, e := range joined.Unwrap() {
+		kept = append(kept, without(e, failure))
+	}
+	return errors.Join(kept...)
 }
 
 // uses returns the union of the nodes declared with Use along path, root

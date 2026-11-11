@@ -528,40 +528,60 @@ func (w *watched) Shutdown(context.Context) error {
 
 func (w *watched) Err() <-chan error { return w.errs }
 
-func TestUse_MonitoredFailureEndsTheCommandsContext(t *testing.T) {
-	rec := &recorder{}
-	g := graph.New()
-	cfg := g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
-	node := g.Define("watched", func(*graph.Scope) (*watched, error) {
-		return &watched{rec: rec, errs: make(chan error, 1)}, nil
-	})
-	root := (&cli.Command{Name: "prog"}).Add(
-		(&cli.Command{Name: "watch", Run: func(ctx context.Context, inv *cli.Invocation) error {
-			rec.add("run watch")
-			inv.Get(node).errs <- errors.New("connection lost")
-			select {
-			case <-ctx.Done():
-				rec.add("context ended")
-				return nil
-			case <-time.After(5 * time.Second):
-				return errors.New("the context did not end")
-			}
-		}}).Use(node),
-	)
-
-	var stdout, stderr bytes.Buffer
-	code := cli.Program{Root: root, Graph: g, LifecycleConfig: cfg}.Run(context.Background(), []string{"watch"},
-		cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
-
-	if code != process.ExitFailure {
-		t.Errorf("code = %d, want %d", code, process.ExitFailure)
-	}
+func TestUse_MonitoredFailureEndsTheCommandsContextAndIsReportedOnce(t *testing.T) {
 	// go-core's Coordinator labels a monitored failure "run:" and the node's name.
-	if want := "prog watch: run: watched: connection lost\n"; stderr.String() != want {
-		t.Errorf("stderr = %q, want exactly one report %q", stderr.String(), want)
+	const failure = "prog watch: run: watched: connection lost\n"
+	tests := []struct {
+		name   string
+		ret    func(ctx context.Context) error // what the leaf returns once its context ends
+		stderr string
+	}{
+		{"the leaf returns nil", func(context.Context) error { return nil }, failure},
+		{"the leaf returns its context's end", func(ctx context.Context) error { return ctx.Err() }, failure},
+		{"the leaf returns its context's cause", context.Cause, failure},
+		{"the leaf wraps its context's cause", func(ctx context.Context) error {
+			return fmt.Errorf("watching: %w", context.Cause(ctx))
+		}, "prog watch: watching: run: watched: connection lost\n"},
+		{"the leaf returns an unrelated error", func(context.Context) error {
+			return errors.New("flush: disk full")
+		}, "prog watch: flush: disk full\nrun: watched: connection lost\n"},
 	}
-	want := []string{"start watched", "run watch", "context ended", "stop watched"}
-	if got := rec.list(); !slices.Equal(got, want) {
-		t.Errorf("events = %q, want %q", got, want)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &recorder{}
+			g := graph.New()
+			cfg := g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
+			node := g.Define("watched", func(*graph.Scope) (*watched, error) {
+				return &watched{rec: rec, errs: make(chan error, 1)}, nil
+			})
+			root := (&cli.Command{Name: "prog"}).Add(
+				(&cli.Command{Name: "watch", Run: func(ctx context.Context, inv *cli.Invocation) error {
+					rec.add("run watch")
+					inv.Get(node).errs <- errors.New("connection lost")
+					select {
+					case <-ctx.Done():
+						rec.add("context ended")
+						return tt.ret(ctx)
+					case <-time.After(5 * time.Second):
+						return errors.New("the context did not end")
+					}
+				}}).Use(node),
+			)
+
+			var stdout, stderr bytes.Buffer
+			code := cli.Program{Root: root, Graph: g, LifecycleConfig: cfg}.Run(context.Background(), []string{"watch"},
+				cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
+
+			if code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", code, process.ExitFailure)
+			}
+			if stderr.String() != tt.stderr {
+				t.Errorf("stderr = %q, want %q", stderr.String(), tt.stderr)
+			}
+			want := []string{"start watched", "run watch", "context ended", "stop watched"}
+			if got := rec.list(); !slices.Equal(got, want) {
+				t.Errorf("events = %q, want %q", got, want)
+			}
+		})
 	}
 }

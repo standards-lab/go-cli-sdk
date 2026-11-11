@@ -517,6 +517,49 @@ func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
 	}
 }
 
+// watched is a subsystem that implements go-core's lifecycle.Monitored,
+// reporting runtime failures on errs.
+type watched struct{ errs chan error }
+
+func (w *watched) Start(context.Context) error    { return nil }
+func (w *watched) Shutdown(context.Context) error { return nil }
+func (w *watched) Err() <-chan error              { return w.errs }
+
+func TestRun_AMonitoredFailureFailsTheStepUnderWayOnOneLine(t *testing.T) {
+	h := newHarness()
+	node := h.g.Define("watched", func(*graph.Scope) (*watched, error) {
+		return &watched{errs: make(chan error, 1)}, nil
+	})
+	root := h.root(scenario.Scenario{
+		Name:  "tour",
+		Nodes: []graph.Ref{node},
+		Steps: []scenario.Step{
+			{Intent: "Wait", Action: func(ctx context.Context, inv *cli.Invocation, _ *scenario.Reporter) error {
+				inv.Get(node).errs <- errors.New("connection lost")
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-time.After(5 * time.Second):
+					return errors.New("the step's context did not end")
+				}
+			}},
+			h.step("after"),
+		},
+	})
+
+	r := h.run(context.Background(), root, "scenario", "tour")
+
+	if r.code != process.ExitFailure {
+		t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+	}
+	if want := "prog scenario tour: step 1 (Wait): run: watched: connection lost\n"; r.stderr != want {
+		t.Errorf("stderr = %q, want exactly one report %q", r.stderr, want)
+	}
+	if got := h.rec.matching("step "); len(got) != 0 {
+		t.Errorf("steps = %q, want the step after not run", got)
+	}
+}
+
 func TestRun_AContextThatEndsUnderAStepThatReturnsNilFailsThatStep(t *testing.T) {
 	tests := []struct {
 		name   string
