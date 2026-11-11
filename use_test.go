@@ -337,6 +337,61 @@ func TestUse_ShutsDownWhenTheContextEndsMidBody(t *testing.T) {
 	}
 }
 
+func TestUse_TheContextEndsAtOnceWhenTheCallerEndsIt(t *testing.T) {
+	// The command's context ends a moment after the caller's, so the
+	// race this test catches is narrow: it repeats the dispatch.
+	for range 200 {
+		u := newUseTree()
+		ctx, cancel := context.WithCancel(context.Background())
+		var done bool
+		var cause error
+		u.body = func(ctx context.Context) error {
+			cancel()
+			err := ctx.Err()
+			select {
+			case <-ctx.Done():
+				done = true
+			default:
+			}
+			cause = context.Cause(ctx)
+			return err
+		}
+		r := u.run(ctx, "data", "get", "--key", "k", "x")
+		cancel()
+		if !done || cause != context.Canceled {
+			t.Fatalf("once Err returned, Done closed %t and Cause %v, want closed and %v", done, cause, context.Canceled)
+		}
+		if want := "prog data get: " + context.Canceled.Error() + "\n"; r.stderr != want {
+			t.Fatalf("stderr = %q, want %q", r.stderr, want)
+		}
+	}
+}
+
+func TestUse_TheCallersDeadlineEndsTheCommandsContextAsADeadline(t *testing.T) {
+	u := newUseTree()
+	deadline := time.Now().Add(20 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	var gotDeadline time.Time
+	var gotErr error
+	u.body = func(ctx context.Context) error {
+		gotDeadline, _ = ctx.Deadline()
+		<-ctx.Done()
+		gotErr = ctx.Err()
+		return gotErr
+	}
+	r := u.run(ctx, "data", "get", "--key", "k", "x")
+	if !gotDeadline.Equal(deadline) {
+		t.Errorf("Deadline = %v, want the caller's %v", gotDeadline, deadline)
+	}
+	if gotErr != context.DeadlineExceeded {
+		t.Errorf("Err = %v, want %v", gotErr, context.DeadlineExceeded)
+	}
+	if want := "prog data get: " + context.DeadlineExceeded.Error() + "\n"; r.stderr != want {
+		t.Errorf("stderr = %q, want %q", r.stderr, want)
+	}
+}
+
 func TestUse_ShutdownTimeoutComesFromTheConfigNode(t *testing.T) {
 	u := newUseTree()
 	u.timeout = 20 * time.Millisecond

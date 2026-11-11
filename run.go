@@ -327,12 +327,16 @@ func (c leafContext) Deadline() (time.Time, bool) {
 	return c.run.Deadline()
 }
 
-// Err waits, once run has ended, for the function that ends the context
-// after it, so the context ends as soon as run does: an action that ends
-// the run's context and returns sees the end at once, and its cause.
+// Err reports run's error once run has ended, after waiting for the
+// function that ends the context after it, so the context ends as soon as
+// run does, with the cause in place: an action that ends the run's context
+// and returns sees the end at once. It is run's error, not the detached
+// context's, which is always [context.Canceled], so a caller's deadline
+// reports [context.DeadlineExceeded], as [leafContext.Deadline] implies.
 func (c leafContext) Err() error {
-	if c.run.Err() != nil {
+	if err := c.run.Err(); err != nil {
 		<-c.Done()
+		return err
 	}
 	return c.Context.Err()
 }
