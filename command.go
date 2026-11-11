@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"iter"
 	"slices"
 	"strings"
 	"unicode"
@@ -159,6 +160,53 @@ func (c *Command) Use(refs ...graph.Ref) *Command {
 	}
 	c.uses = append(c.uses, refs...)
 	return c
+}
+
+// Leaves yields each leaf at or below c, depth-first in the order commands
+// were added with [Command.Add], or c itself when c is a leaf. A leaf is a
+// command the dispatcher runs rather than one that selects a subcommand: a
+// command with a Run function and no subcommands.
+//
+// With each leaf it yields the leaf's command path, the words from the
+// tree's root to the leaf as the dispatcher prints them, such as
+// "prog scenario tour", and the union of the nodes declared with
+// [Command.Use] along that path, from the root, not from c, to the leaf:
+// each node once, in the order first declared, or nil when the path
+// declares none. That is exactly the set [Program.Run] builds for a
+// dispatch to the leaf, apart from the Program's LifecycleConfig, which
+// every Build adds; the dispatcher computes it by the same rule. Each slice
+// is the caller's own, so changing it changes neither the tree nor a later
+// yield. Iteration stops when the consumer stops.
+//
+// Leaves exists for a composition root's layer test: ranging over
+// root.Leaves(), it builds each leaf's set from the graph and asserts that
+// [graph.System.Dropped] is empty where it should be, so a forgotten node
+// shows in a test rather than in one command's run.
+func (c *Command) Leaves() iter.Seq2[string, []graph.Ref] {
+	return func(yield func(string, []graph.Ref) bool) {
+		var path []*Command
+		for a := c; a != nil; a = a.parent {
+			path = append(path, a)
+		}
+		slices.Reverse(path)
+		walkLeaves(path, yield)
+	}
+}
+
+// walkLeaves yields each leaf at or below the last command of path, which
+// holds the commands from the root to it, and reports whether the consumer
+// wants more. The path slice is shared down the walk; uses copies out of it.
+func walkLeaves(path []*Command, yield func(string, []graph.Ref) bool) bool {
+	cmd := path[len(path)-1]
+	if !cmd.isParent() {
+		return yield(cmd.path(), uses(path))
+	}
+	for _, sub := range cmd.children {
+		if !walkLeaves(append(path, sub), yield) {
+			return false
+		}
+	}
+	return true
 }
 
 // child returns the subcommand of c named name, or nil.

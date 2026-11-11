@@ -680,3 +680,23 @@ func TestCommands_PanicsOnAWiringMistake(t *testing.T) {
 		})
 	}
 }
+
+func TestCommands_EachScenarioIsALeafOfTheTree(t *testing.T) {
+	h := newHarness()
+	root := h.root(h.pair()...)
+	type leaf struct {
+		path  string
+		nodes []graph.Ref
+	}
+	var got []leaf
+	for path, refs := range root.Leaves() {
+		got = append(got, leaf{path, refs})
+	}
+	want := []leaf{
+		{"prog scenario first", []graph.Ref{h.db}},
+		{"prog scenario second-tour", []graph.Ref{h.cache, h.db}},
+	}
+	if !slices.EqualFunc(got, want, func(x, y leaf) bool { return x.path == y.path && slices.Equal(x.nodes, y.nodes) }) {
+		t.Errorf("Leaves = %v, want %v", got, want)
+	}
+}

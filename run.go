@@ -356,7 +356,9 @@ func without(err, failure error) error {
 }
 
 // uses returns the union of the nodes declared with Use along path, root
-// first, each node once in the order first declared.
+// first, each node once in the order first declared, in a slice of its
+// own. It is the one rule for a leaf's set: execute builds it, and
+// [Command.Leaves] yields it.
 func uses(path []*Command) []graph.Ref {
 	var refs []graph.Ref
 	for _, cmd := range path {

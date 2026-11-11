@@ -21,6 +21,8 @@
 //   - [Command.Require], which marks a leaf's flags as required
 //   - [Command.Exclusive], which declares a mutually exclusive flag group
 //   - [Command.Use], which declares the graph nodes a command needs
+//   - [Command.Leaves], which yields each leaf below a command with its
+//     path and the nodes a dispatch to it builds, for a layer test
 //   - [Streams], the standard input, output, and error a dispatch uses
 //   - [Invocation], what a running command receives: its arguments and
 //     the Streams Run was given, which it embeds
