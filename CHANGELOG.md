@@ -6,6 +6,64 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the module
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-11-11
+
+Moves go-cli-sdk onto go-core v0.11.0. A command tree is dispatched through `cli.Program`, which
+names its root, graph, and lifecycle configuration node as fields; `Command.Leaves` lets a
+composition root's layer test build every leaf's set; and a monitored failure is reported on one
+line naming the node that failed.
+
+### Added
+
+- `cli.Program{Root, Graph, LifecycleConfig}`, a command tree with the graph its declared nodes
+  are built from and the node that configures their lifecycle, and `Program.Run(ctx, args,
+  streams)`, which dispatches the arguments and returns the exit code. `Run` panics, naming the
+  field, on a nil `Root` or when only one of `Graph` and `LifecycleConfig` is set, and at the
+  start of a dispatch when any command in the tree declares `Use` and `Graph` is nil.
+- `(*Command).Leaves()`, which yields each leaf at or below a command with its command path and
+  the nodes a dispatch to it builds, apart from the `LifecycleConfig` every Build adds, for a
+  composition root's layer test.
+
+### Changed
+
+- **Breaking:** a `Monitored` value's failure while a leaf or a scenario step runs is reported on
+  one line, `<path>: run: <node>: <error>`, or for a scenario
+  `<path>: step N (<intent>): run: <node>: <error>`, in place of `context canceled` followed by
+  `run: <error>`. The leaf's context's `context.Cause` is that labelled failure, so a leaf that
+  returns only its context's end, or wraps the cause, is reported once; an unrelated leaf error
+  is reported beside it.
+- **Breaking:** requires go-core v0.11.0, up from v0.8.0, and carries its breaks to a program
+  that defines its graph:
+  - `graph.Scope.After` is removed; a node's order-only edges are declared at `Define` with
+    `graph.After`.
+  - `graph.Graph.Observe` takes `func(graph.Ref)`, the node's handle, in place of
+    `func(string)`.
+  - `graph.Graph.Define`, `Value`, `Fresh`, and `Group` panic on a name containing a comma or a
+    newline.
+  - `graph.Dependency` gains a `Ref` field, so a composite literal without field names no longer
+    compiles.
+  - `lifecycle`: a `Monitored` value's failure ends the run as `run: <node>: <error>`; a channel
+    registered with `Coordinator.Monitor` still reports `run: <error>`.
+
+  go-core v0.9.0 and v0.10.0 add the `reactor` and `event` packages and break nothing.
+
+### Removed
+
+- **Breaking:** `cli.Run`, `cli.Option`, and `cli.WithGraph`, in favor of `cli.Program`:
+  `cli.Run(ctx, root, args, streams, cli.WithGraph(g, cfg))` becomes
+  `cli.Program{Root: root, Graph: g, LifecycleConfig: cfg}.Run(ctx, args, streams)`, and
+  `cli.Run(ctx, root, args, streams)` becomes `cli.Program{Root: root}.Run(ctx, args, streams)`.
+
+### Migrating from v0.2.0
+
+- **`cli.Run` becomes `cli.Program{...}.Run`.** Move the root and `WithGraph`'s two arguments
+  into the Program's fields; the arguments and streams are passed to `Run` as before.
+- **A test that matches a monitored failure's stderr** expects one line, the command's path,
+  then `run: `, the node's name, and the error, with no `context canceled` line before it.
+- **The graph a program defines follows go-core's "Migrating from v0.10.0".** `s.After(x)`
+  becomes `graph.After(x)` on the Define line, an observer takes a `graph.Ref`, and a name with
+  a comma or a newline must change.
+
 ## [v0.2.0] - 2026-10-12
 
 Adds package `scenario`, which runs a tool's narrated scenarios, its guided tours of its own
@@ -58,6 +116,7 @@ commands build only the go-core graph nodes they declare, on go-core v0.8.0.
 - CI runs `mise run check` on every pull request and push to `main`; a `v*` tag publishes a
   GitHub release.
 
-[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/standards-lab/go-cli-sdk/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/go-cli-sdk/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/go-cli-sdk/releases/tag/v0.1.0
