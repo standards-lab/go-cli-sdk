@@ -152,8 +152,8 @@ func (c *Command) Add(subs ...*Command) *Command {
 // caught here: it reaches [graph.Graph.Build], which panics on it when a
 // dispatch runs a leaf at or below c, after PreRun and before any node is
 // constructed. Use anywhere in a tree requires the [Program]'s Graph and
-// LifecycleConfig, which is checked when the tree is dispatched and panics
-// then, whichever command is selected.
+// LifecycleConfig; [Program.Run] checks this when it dispatches the tree and
+// panics then, whichever command is selected.
 func (c *Command) Use(refs ...graph.Ref) *Command {
 	if slices.Contains(refs, nil) {
 		panic(fmt.Sprintf("cli: %s: Use of a nil node", c.path()))
@@ -195,7 +195,8 @@ func (c *Command) Leaves() iter.Seq2[string, []graph.Ref] {
 
 // walkLeaves yields each leaf at or below the last command of path, which
 // holds the commands from the root to it, and reports whether the consumer
-// wants more. The path slice is shared down the walk; uses copies out of it.
+// wants more. The path slice is shared down the walk, and the uses function
+// copies the leaf's nodes out of it.
 func walkLeaves(path []*Command, yield func(string, []graph.Ref) bool) bool {
 	cmd := path[len(path)-1]
 	if !cmd.isParent() {

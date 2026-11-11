@@ -52,9 +52,9 @@ func command(s Scenario) *cli.Command {
 // narrating each intent through a Reporter over inv.Stdout before its
 // action, as [Commands] states. After each action it checks ctx itself,
 // so an action that ignores ctx, or ends it and returns nil, still fails
-// its step, before the next heading prints. A step that fails with only
-// ctx's end fails with ctx's cause when the cause is still that end, so a
-// monitored failure that ended it is reported under the step, and a
+// its step, before the next heading prints. A step whose error is only
+// ctx's end fails with ctx's cause instead when that cause matches the end,
+// so a monitored failure that ended ctx is reported under the step, and a
 // caller's own cause is not.
 func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 	r := &Reporter{w: inv.Stdout}

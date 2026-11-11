@@ -15,8 +15,9 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// Program is a command tree ready to dispatch: its root, and the graph that
-// the nodes its commands declare with [Command.Use] are built from.
+// Program is a command tree ready to dispatch: its root, the graph that the
+// nodes its commands declare with [Command.Use] are built from, and the node
+// that configures their lifecycle.
 //
 // Root is required. Graph and LifecycleConfig go together: a tree that
 // declares Use sets both, and one that declares none may leave both nil.
@@ -71,14 +72,13 @@ type Program struct {
 //     the command returns is reported on stderr with the command's usage
 //     and returns ExitUsage
 //   - any other error PreRun or the command returns, a Build error, or a
-//     failure the [lifecycle.Coordinator] reports, to start, of a
-//     [lifecycle.Monitored] value while the leaf runs, which also ends the
-//     leaf's context, or to shut down, is reported once on stderr and
-//     returns ExitFailure; a leaf that returns only its context's end, or
-//     the cause [context.Cause] gives for it, after a monitored failure
-//     ended it reports one line, the failure labelled "run:" and its
-//     node's name, and a leaf error unrelated to the failure is reported
-//     beside it
+//     failure the [lifecycle.Coordinator] reports is reported once on
+//     stderr and returns ExitFailure. The Coordinator reports a failure to
+//     start, to shut down, or of a [lifecycle.Monitored] value while the
+//     leaf runs, which also ends the leaf's context. When the leaf then
+//     returns only its context's end, or the context's [context.Cause],
+//     stderr holds one line: the failure labelled "run:" with its node's
+//     name. A leaf error unrelated to the failure is reported beside it.
 //   - a command that succeeds returns ExitOK
 //
 // A tree may be dispatched more than once. Each dispatch starts from the
@@ -252,16 +252,15 @@ func execute(ctx context.Context, p Program, path []*Command, args []string, cha
 // Build's, or the Coordinator's: startup's or the leaf's, joined with the
 // shutdown's.
 //
-// A monitored failure is reported once. The leaf runs under a context
-// whose [context.Cause], once a monitored failure ends it, is that failure
-// labelled "run:", as the Coordinator labels it. When the leaf's error is
-// only its context's end, it is replaced by that cause, a [runFailure];
-// a caller's own cause is not, so a context the caller ended reports
-// [context.Canceled] or [context.DeadlineExceeded]. When the leaf's
-// error then carries the failure, by returning the cause or wrapping it,
-// that error stands in place of the Coordinator's own "run:" report. A
-// leaf error unrelated to the failure is reported beside it, and a
-// context the caller ended is reported as its own error.
+// A monitored failure is reported once. When a monitored failure ends the
+// leaf's context, the context's [context.Cause] is a [runFailure]: the
+// failure labelled "run:", as the Coordinator labels it. A leaf error that
+// is only the context's end is replaced by that cause. A caller's own cause
+// does not replace it, so a context the caller ended reports
+// [context.Canceled] or [context.DeadlineExceeded]. When the leaf's error
+// then carries the failure, because the leaf returned the cause or wrapped
+// it, that error replaces the Coordinator's own "run:" report. A leaf error
+// unrelated to the failure is reported beside it.
 func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if len(inv.uses) == 0 {
 		return cmd.Run(ctx, inv)
@@ -297,14 +296,14 @@ func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	return errors.Join(leafErr, without(err, failure))
 }
 
-// runContext returns the context the leaf runs under: one that carries
-// runCtx's values and deadline and ends when runCtx does, and whose cause,
-// when runCtx ends while ctx, the caller's, has not, is runCtx's cause
-// labelled "run:", the Coordinator's label for a monitored failure. A
-// context derived from runCtx would carry the cause unlabelled, so the
-// context is detached from runCtx's cancellation and ended, with the
-// labelled cause, by a function run after runCtx ends. stop releases the
-// context.
+// runContext returns the context the leaf runs under. The context carries
+// runCtx's values and deadline and ends when runCtx does. When runCtx ends
+// while ctx, the caller's context, has not, the context's cause is
+// runCtx's cause labelled "run:", the Coordinator's label for a monitored
+// failure. A context derived from runCtx would carry the cause unlabelled,
+// so the leaf's context is detached from runCtx's cancellation, and a
+// function [context.AfterFunc] runs after runCtx ends cancels it with the
+// labelled cause. stop releases the context.
 func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func()) {
 	detached, cancel := context.WithCancelCause(context.WithoutCancel(runCtx))
 	stopAfter := context.AfterFunc(runCtx, func() {
@@ -321,11 +320,11 @@ func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func())
 }
 
 // runFailure is a monitored failure as the cause of the leaf's context:
-// the failure labelled "run:", which is also [context.Canceled], the end it
-// gave the context. A cause that is still the context's end explains it,
-// so the leaf, or an action such as a scenario step's, may report the
-// cause in its place; a caller's own cause, which is not, is left out, and
-// the context's end is reported as the caller ended it.
+// the failure labelled "run:". It also matches [context.Canceled], the end
+// it gave the context, so the leaf, or an action such as a scenario step,
+// may report the cause in place of that end. A caller's own cause that
+// does not match the end is left out, and the end is reported as the
+// caller ended the context.
 type runFailure struct{ err error }
 
 func (f runFailure) Error() string { return "run: " + f.err.Error() }
@@ -336,9 +335,9 @@ func (f runFailure) Unwrap() error { return f.err }
 // failure gives the leaf's context.
 func (f runFailure) Is(target error) bool { return target == context.Canceled }
 
-// leafContext is the context runContext returns: Context, detached from
-// run's cancellation and ended after run with the labelled cause, which
-// [context.Cause] reads from it, with run's deadline.
+// leafContext is the context runContext returns. Context is detached from
+// run's cancellation and is cancelled after run ends, with the labelled
+// cause [context.Cause] reads from it; Deadline and Err report run's.
 type leafContext struct {
 	context.Context
 	run context.Context
@@ -349,12 +348,12 @@ func (c leafContext) Deadline() (time.Time, bool) {
 	return c.run.Deadline()
 }
 
-// Err reports run's error once run has ended, after waiting for the
-// function that ends the context after it, so the context ends as soon as
-// run does, with the cause in place: an action that ends the run's context
-// and returns sees the end at once. It is run's error, not the detached
-// context's, which is always [context.Canceled], so a caller's deadline
-// reports [context.DeadlineExceeded], as [leafContext.Deadline] implies.
+// Err returns run's error once run has ended, after waiting for the
+// function that cancels Context, so the cause is in place whenever the end
+// is seen: an action that ends the run's context and returns sees the end
+// at once. Err returns run's error rather than Context's, which is always
+// [context.Canceled], so a caller's deadline reports
+// [context.DeadlineExceeded], matching [leafContext.Deadline].
 func (c leafContext) Err() error {
 	if err := c.run.Err(); err != nil {
 		<-c.Done()
@@ -363,9 +362,9 @@ func (c leafContext) Err() error {
 	return c.Context.Err()
 }
 
-// without returns err with the Coordinator's report of the monitored
-// failure, the error that wraps failure, removed from the errors err
-// joins, and nil when nothing is left.
+// without removes the Coordinator's report of the monitored failure, the
+// error that wraps failure, from the errors err joins, and returns what is
+// left, or nil when nothing is.
 func without(err, failure error) error {
 	if err == nil || errors.Is(errors.Unwrap(err), failure) {
 		return nil

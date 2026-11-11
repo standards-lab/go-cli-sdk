@@ -15,15 +15,16 @@ go-cli-sdk's source is spike-cli-architecture's `cli` package
 
 ## Capability map
 
-Every capability below is built, as of v0.2.0. The code, `doc.go`, and the README are
-authoritative for each; this list only names them.
+Every capability below is built. The code, `doc.go`, and the README are authoritative for each;
+this list only names them.
 
 - **Dispatcher and flags**: commands on the standard library's `flag`.
 - **Generated help and `Footer`**.
-- **Per-command composition**: `Use`, `WithGraph`, and `Get`, so a command builds only the
-  graph nodes it declares.
+- **Per-command composition**: `Use` and `Get`, so a command builds only the graph nodes it
+  declares, and `Leaves`, which yields each leaf with the nodes a dispatch to it builds.
 - **`Validate`**.
-- **`Streams` and `Run`'s exit codes**.
+- **`Program` and `Streams`**: `Program.Run` dispatches a command tree and returns go-core's exit
+  codes, reporting a `Monitored` value's failure on one line.
 - **Scenario runner**: package `scenario`, whose `Commands` and `WriteListing` mount a tool's
   narrated scenarios as `<tool> scenario <name>` leaves.
 - **CI and release**: CI runs `mise run check` on every pull request and push to `main`;
