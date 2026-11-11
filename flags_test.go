@@ -562,9 +562,8 @@ func TestStringsValue_Default(t *testing.T) {
 func TestStringsValue_DoesNotAliasTheDefault(t *testing.T) {
 	def := []string{"d1"}
 	var tags []string
-	cmd := &cli.Command{Name: "cmd", Run: func(context.Context, *cli.Invocation) error { return nil }}
 
-	cmd.Flags().Var(cli.StringsValue(&tags, def), "tag", "tag to attach")
+	cli.StringsValue(&tags, def)
 
 	if !slices.Equal(tags, []string{"d1"}) {
 		t.Fatalf("tags = %q after StringsValue, want [d1]", tags)
