@@ -76,7 +76,7 @@ func (c *Command) restoreFlags() {
 }
 
 // undoer returns a function that puts f back to the value it holds now,
-// or nil when the dispatcher does not restore f. A [StringsVar] flag gets
+// or nil when the dispatcher does not restore f. A [StringsValue] flag gets
 // back its values and whether its next occurrence replaces them. Any other
 // flag that holds a value, which the flag package's own flags show by
 // implementing flag.Getter, is Set to its current String. A Value without
@@ -136,18 +136,24 @@ func isBool(f *flag.Flag) bool {
 	return ok && b.IsBoolFlag()
 }
 
-// StringsVar defines a repeatable string flag on fs: each occurrence
-// appends its value to *p, in the order given, wherever it falls among the
-// positional arguments. A value is taken whole and never split on commas.
-// *p starts as a copy of value; the first occurrence replaces that default
-// rather than appending to it. Help lists the flag as "--name string" with
-// "(repeatable)" after its usage.
-func StringsVar(fs *flag.FlagSet, p *[]string, name string, value []string, usage string) {
+// StringsValue returns a repeatable string flag.Value bound to p, for
+// registering with fs.Var:
+//
+//	fs.Var(cli.StringsValue(&tags, []string{"a"}), "tag", "tag to attach")
+//
+// Each occurrence appends its value to *p, in the order given, wherever it
+// falls among the positional arguments. A value is taken whole and never
+// split on commas. StringsValue sets *p to a copy of value before it
+// returns, so fs.Var records that default for help and *p never aliases
+// value; the first occurrence replaces the default rather than appending to
+// it. Help lists the flag as "--name string" with "(repeatable)" after its
+// usage.
+func StringsValue(p *[]string, value []string) flag.Value {
 	*p = append([]string(nil), value...)
-	fs.Var(&stringsValue{p: p}, name, usage)
+	return &stringsValue{p: p}
 }
 
-// stringsValue is the flag.Value behind [StringsVar].
+// stringsValue is the flag.Value behind [StringsValue].
 type stringsValue struct {
 	p   *[]string
 	set bool // whether Set has replaced the default
