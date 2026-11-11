@@ -20,7 +20,7 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// The scenario parent driven through cli.Run over buffers, mounted under a
+// The scenario parent driven through cli.Program.Run over buffers, mounted under a
 // test root over a small graph: db, and cache, which uses db. Each node's
 // value is a subsystem that records its Start and Shutdown, and each
 // constructor records its build, so a test reads what a run built and
@@ -118,7 +118,7 @@ type result struct {
 func (h *harness) run(ctx context.Context, root *cli.Command, args ...string) result {
 	var stdout, stderr bytes.Buffer
 	streams := cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}
-	code := cli.Run(ctx, root, args, streams, cli.WithGraph(h.g, h.cfg))
+	code := cli.Program{Root: root, Graph: h.g, LifecycleConfig: h.cfg}.Run(ctx, args, streams)
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -484,33 +484,96 @@ func TestRun_AFailedStepStopsTheRunAndIsReportedOnce(t *testing.T) {
 }
 
 func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
+	// A caller's cause is not the step's error: the step reports the
+	// context's end, with or without nodes under a lifecycle.
+	tests := []struct {
+		name  string
+		cause error // the caller's cause, nil for a plain cancel
+		nodes bool
+	}{
+		{"a plain cancel", nil, true},
+		{"a cancel with a cause", errors.New("operator interrupt"), true},
+		{"a plain cancel with no nodes", nil, false},
+		{"a cancel with a cause with no nodes", errors.New("operator interrupt"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := newHarness()
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(nil)
+			var nodes []graph.Ref
+			if tt.nodes {
+				nodes = []graph.Ref{h.db}
+			}
+			root := h.root(scenario.Scenario{
+				Name:  "tour",
+				Nodes: nodes,
+				Steps: []scenario.Step{
+					{Intent: "Wait", Action: func(ctx context.Context, _ *cli.Invocation, _ *scenario.Reporter) error {
+						cancel(tt.cause)
+						select {
+						case <-ctx.Done():
+							return ctx.Err()
+						case <-time.After(5 * time.Second):
+							return errors.New("the step's context did not end with the run's")
+						}
+					}},
+					h.step("after"),
+				},
+			})
+
+			r := h.run(ctx, root, "scenario", "tour")
+
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if want := "prog scenario tour: step 1 (Wait): " + context.Canceled.Error() + "\n"; r.stderr != want {
+				t.Errorf("stderr = %q, want %q", r.stderr, want)
+			}
+			if got := h.rec.matching("step "); len(got) != 0 {
+				t.Errorf("steps = %q, want the step after not run", got)
+			}
+		})
+	}
+}
+
+// watched is a subsystem that implements go-core's lifecycle.Monitored,
+// reporting runtime failures on errs.
+type watched struct{ errs chan error }
+
+func (w *watched) Start(context.Context) error    { return nil }
+func (w *watched) Shutdown(context.Context) error { return nil }
+func (w *watched) Err() <-chan error              { return w.errs }
+
+func TestRun_AMonitoredFailureFailsTheStepUnderWayOnOneLine(t *testing.T) {
 	h := newHarness()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	node := h.g.Define("watched", func(*graph.Scope) (*watched, error) {
+		return &watched{errs: make(chan error, 1)}, nil
+	})
 	root := h.root(scenario.Scenario{
 		Name:  "tour",
-		Nodes: []graph.Ref{h.db},
+		Nodes: []graph.Ref{node},
 		Steps: []scenario.Step{
-			{Intent: "Wait", Action: func(ctx context.Context, _ *cli.Invocation, _ *scenario.Reporter) error {
-				cancel()
+			{Intent: "Wait", Action: func(ctx context.Context, inv *cli.Invocation, _ *scenario.Reporter) error {
+				inv.Get(node).errs <- errors.New("connection lost")
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
 				case <-time.After(5 * time.Second):
-					return errors.New("the step's context did not end with the run's")
+					return errors.New("the step's context did not end")
 				}
 			}},
 			h.step("after"),
 		},
 	})
 
-	r := h.run(ctx, root, "scenario", "tour")
+	r := h.run(context.Background(), root, "scenario", "tour")
 
 	if r.code != process.ExitFailure {
 		t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
 	}
-	if want := "prog scenario tour: step 1 (Wait): " + context.Canceled.Error() + "\n"; r.stderr != want {
-		t.Errorf("stderr = %q, want %q", r.stderr, want)
+	if want := "prog scenario tour: step 1 (Wait): run: watched: connection lost\n"; r.stderr != want {
+		t.Errorf("stderr = %q, want exactly one report %q", r.stderr, want)
 	}
 	if got := h.rec.matching("step "); len(got) != 0 {
 		t.Errorf("steps = %q, want the step after not run", got)
@@ -635,5 +698,25 @@ func TestCommands_PanicsOnAWiringMistake(t *testing.T) {
 			}()
 			scenario.Commands(tt.scenarios...)
 		})
+	}
+}
+
+func TestCommands_EachScenarioIsALeafOfTheTree(t *testing.T) {
+	h := newHarness()
+	root := h.root(h.pair()...)
+	type leaf struct {
+		path  string
+		nodes []graph.Ref
+	}
+	var got []leaf
+	for path, refs := range root.Leaves() {
+		got = append(got, leaf{path, refs})
+	}
+	want := []leaf{
+		{"prog scenario first", []graph.Ref{h.db}},
+		{"prog scenario second-tour", []graph.Ref{h.cache, h.db}},
+	}
+	if !slices.EqualFunc(got, want, func(x, y leaf) bool { return x.path == y.path && slices.Equal(x.nodes, y.nodes) }) {
+		t.Errorf("Leaves = %v, want %v", got, want)
 	}
 }

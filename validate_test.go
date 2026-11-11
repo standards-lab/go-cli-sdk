@@ -33,9 +33,7 @@ type validateTree struct {
 
 func newValidateTree() *validateTree {
 	v := &validateTree{g: graph.New()}
-	v.cfg = v.g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
+	v.cfg = v.g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
 	db := v.g.Define("db", func(*graph.Scope) (int, error) {
 		v.calls = append(v.calls, "build db")
 		return 0, nil
@@ -72,7 +70,7 @@ func newValidateTree() *validateTree {
 
 func (v *validateTree) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), v.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(v.g, v.cfg))
+	code := cli.Program{Root: v.root, Graph: v.g, LifecycleConfig: v.cfg}.Run(context.Background(), args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

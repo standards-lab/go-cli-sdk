@@ -8,39 +8,37 @@ import (
 	"io"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/lifecycle"
 	"github.com/standards-lab/go-core/process"
 )
 
-// Option configures one [Run].
-type Option func(*options)
+// Program is a command tree ready to dispatch: its root, the graph that the
+// nodes its commands declare with [Command.Use] are built from, and the node
+// that configures their lifecycle.
+//
+// Root is required. Graph and LifecycleConfig go together: a tree that
+// declares Use sets both, and one that declares none may leave both nil.
+type Program struct {
+	// Root is the root of the command tree.
+	Root *Command
 
-// options is what Run's Options set.
-type options struct {
-	graph           *graph.Graph
-	lifecycleConfig *graph.Node[lifecycle.Config]
-}
+	// Graph is the graph that the nodes a leaf's path declares with
+	// [Command.Use] are built from.
+	Graph *graph.Graph
 
-// WithGraph gives Run the graph that the nodes a leaf's path declares with
-// [Command.Use] are built from, and the node whose value configures the
-// [lifecycle.Coordinator] that runs what was built. That node is added to
-// every Build, so its constructor supplies the shutdown timeout, and it
-// must return a finalized Config: lifecycle.New panics on one that is not.
-// WithGraph panics on a nil g or lifecycleConfig.
-func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Option {
-	if g == nil || lifecycleConfig == nil {
-		panic("cli: WithGraph with a nil graph or lifecycle config node")
-	}
-	return func(o *options) {
-		o.graph = g
-		o.lifecycleConfig = lifecycleConfig
-	}
+	// LifecycleConfig is the node whose value configures the
+	// [lifecycle.Coordinator] that runs what was built. It is added to
+	// every Build, so its constructor supplies the shutdown timeout, and
+	// it must return a finalized Config: lifecycle.New panics on one that
+	// is not.
+	LifecycleConfig *graph.Node[lifecycle.Config]
 }
 
 // Run dispatches args, the program arguments without the program name, over
-// the tree rooted at root, and returns the process exit code. streams are
+// the tree rooted at p.Root, and returns the process exit code. streams are
 // the process's streams, or a test's buffers: a running command reads Stdin
 // and writes Stdout and Stderr through its [Invocation], which embeds them,
 // and the dispatcher prints to Stdout and Stderr itself but never reads
@@ -58,11 +56,10 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 //  8. run the leaf with [Command.Run]
 //
 // When the leaf's path has nodes declared with Use, the Build constructs
-// their union and the lifecycle configuration node from the [WithGraph]
-// graph; the System is started with a [lifecycle.Coordinator], the leaf
-// runs under it, reading each declared node's value with
-// [Invocation.Get], and the System is shut down. Nothing is built when the
-// dispatch ends before the Build.
+// their union and p.LifecycleConfig from p.Graph; the System is started
+// with a [lifecycle.Coordinator], the leaf runs under it, reading each
+// declared node's value with [Invocation.Get], and the System is shut
+// down. Nothing is built when the dispatch ends before the Build.
 //
 // Run owns every line the dispatcher prints, and returns go-core's process
 // exit codes:
@@ -75,10 +72,13 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 //     the command returns is reported on stderr with the command's usage
 //     and returns ExitUsage
 //   - any other error PreRun or the command returns, a Build error, or a
-//     failure the [lifecycle.Coordinator] reports, to start, of a
-//     [lifecycle.Monitored] value while the leaf runs, which also ends the
-//     leaf's context, or to shut down, is reported once on stderr and
-//     returns ExitFailure
+//     failure the [lifecycle.Coordinator] reports is reported once on
+//     stderr and returns ExitFailure. The Coordinator reports a failure to
+//     start, to shut down, or of a [lifecycle.Monitored] value while the
+//     leaf runs, which also ends the leaf's context. When the leaf then
+//     returns only its context's end, or the context's [context.Cause],
+//     stderr holds one line: the failure labelled "run:" with its node's
+//     name. A leaf error unrelated to the failure is reported beside it.
 //   - a command that succeeds returns ExitOK
 //
 // A tree may be dispatched more than once. Each dispatch starts from the
@@ -93,16 +93,16 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 // restored. [Invocation.Changed], [Command.Require], and
 // [Command.Exclusive] see only the flags set in the current dispatch.
 //
-// Run panics at the start of the dispatch when any command in the tree has
-// declared [Command.Use] and no [WithGraph] option was given, whichever
-// command is selected, and when a flag being restored from the previous
-// dispatch refuses, in its Set, the String it had before that dispatch.
-func Run(ctx context.Context, root *Command, args []string, streams Streams, opts ...Option) int {
-	var o options
-	for _, opt := range opts {
-		opt(&o)
-	}
-	prepareTree(root, o.graph != nil)
+// Run panics, naming the field, when p.Root is nil, and when only one of
+// p.Graph and p.LifecycleConfig is set. It panics at the start of the
+// dispatch when any command in the tree has declared [Command.Use] and
+// p.Graph is nil, whichever command is selected, and when a flag being
+// restored from the previous dispatch refuses, in its Set, the String it
+// had before that dispatch.
+func (p Program) Run(ctx context.Context, args []string, streams Streams) int {
+	p.check()
+	root := p.Root
+	prepareTree(root, p.Graph != nil)
 	root.restoreFlags()
 	cmd := root
 	var path []*Command
@@ -123,7 +123,7 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 			}
 		}
 		if !cmd.isParent() {
-			return execute(ctx, &o, path, rest, changed, streams)
+			return execute(ctx, p, path, rest, changed, streams)
 		}
 		if len(rest) == 0 {
 			return process.Usage(streams.Stdout, help(cmd))
@@ -134,6 +134,19 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 			return process.Usage(streams.Stderr, msg)
 		}
 		cmd, args = sub, rest[1:]
+	}
+}
+
+// check panics, naming the field, when p.Root is nil or when only one of
+// p.Graph and p.LifecycleConfig is set.
+func (p Program) check() {
+	switch {
+	case p.Root == nil:
+		panic("cli: Program.Root is nil")
+	case p.Graph != nil && p.LifecycleConfig == nil:
+		panic("cli: Program.LifecycleConfig is nil but Program.Graph is set")
+	case p.Graph == nil && p.LifecycleConfig != nil:
+		panic("cli: Program.Graph is nil but Program.LifecycleConfig is set")
 	}
 }
 
@@ -199,7 +212,7 @@ func parse(cmd *Command, args []string, streams Streams) (rest, set []string, un
 // under a lifecycle when the path declares nodes with Use, and maps the
 // first error to an exit code. path holds the commands from the root to
 // the leaf, and changed the flags the leaf sees set on the command line.
-func execute(ctx context.Context, o *options, path []*Command, args []string, changed map[string]bool, streams Streams) int {
+func execute(ctx context.Context, p Program, path []*Command, args []string, changed map[string]bool, streams Streams) int {
 	root, cmd := path[0], path[len(path)-1]
 	if cmd.Args != nil {
 		if err := cmd.Args(args); err != nil {
@@ -221,7 +234,7 @@ func execute(ctx context.Context, o *options, path []*Command, args []string, ch
 		err = root.PreRun(ctx, inv)
 	}
 	if err == nil {
-		err = o.run(ctx, cmd, inv)
+		err = p.run(ctx, cmd, inv)
 	}
 	if err == nil {
 		return process.ExitOK
@@ -238,22 +251,139 @@ func execute(ctx context.Context, o *options, path []*Command, args []string, ch
 // with the System set on inv for [Invocation.Get]. The error is the
 // Build's, or the Coordinator's: startup's or the leaf's, joined with the
 // shutdown's.
-func (o *options) run(ctx context.Context, cmd *Command, inv *Invocation) error {
+//
+// A monitored failure is reported once. When a monitored failure ends the
+// leaf's context, the context's [context.Cause] is a [runFailure]: the
+// failure labelled "run:", as the Coordinator labels it. A leaf error that
+// is only the context's end is replaced by that cause. A caller's own cause
+// does not replace it, so a context the caller ended reports
+// [context.Canceled] or [context.DeadlineExceeded]. When the leaf's error
+// then carries the failure, because the leaf returned the cause or wrapped
+// it, that error replaces the Coordinator's own "run:" report. A leaf error
+// unrelated to the failure is reported beside it.
+func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if len(inv.uses) == 0 {
 		return cmd.Run(ctx, inv)
 	}
-	sys, err := o.graph.Build(append(slices.Clone(inv.uses), o.lifecycleConfig)...)
+	sys, err := p.Graph.Build(append(slices.Clone(inv.uses), p.LifecycleConfig)...)
 	if err != nil {
 		return err
 	}
-	return lifecycle.New(sys, sys.Get(o.lifecycleConfig)).Exec(ctx, func(ctx context.Context) error {
+	var leafErr, failure error // failure is the monitored failure the leaf's error carries
+	err = lifecycle.New(sys, sys.Get(p.LifecycleConfig)).Exec(ctx, func(runCtx context.Context) error {
 		inv.system = sys
-		return cmd.Run(ctx, inv)
+		leafCtx, stop := runContext(ctx, runCtx)
+		defer stop()
+		leafErr = cmd.Run(leafCtx, inv)
+		// The cause replaces the context's end only when it is still that
+		// end, as a monitored failure's is, not a caller's own cause.
+		if leafErr != nil && leafErr == leafCtx.Err() {
+			if cause := context.Cause(leafCtx); errors.Is(cause, leafErr) {
+				leafErr = cause
+			}
+		}
+		// The run context ended while the caller's did not: the
+		// Coordinator failed it with a monitored failure, its cause.
+		if ctx.Err() == nil && runCtx.Err() != nil && errors.Is(leafErr, context.Cause(runCtx)) {
+			failure = context.Cause(runCtx)
+			return nil
+		}
+		return leafErr
 	})
+	if failure == nil {
+		return err
+	}
+	return errors.Join(leafErr, without(err, failure))
+}
+
+// runContext returns the context the leaf runs under. The context carries
+// runCtx's values and deadline and ends when runCtx does. When runCtx ends
+// while ctx, the caller's context, has not, the context's cause is
+// runCtx's cause labelled "run:", the Coordinator's label for a monitored
+// failure. A context derived from runCtx would carry the cause unlabelled,
+// so the leaf's context is detached from runCtx's cancellation, and a
+// function [context.AfterFunc] runs after runCtx ends cancels it with the
+// labelled cause. stop releases the context.
+func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func()) {
+	detached, cancel := context.WithCancelCause(context.WithoutCancel(runCtx))
+	stopAfter := context.AfterFunc(runCtx, func() {
+		cause := context.Cause(runCtx)
+		if ctx.Err() == nil {
+			cause = runFailure{cause}
+		}
+		cancel(cause)
+	})
+	return leafContext{Context: detached, run: runCtx}, func() {
+		stopAfter()
+		cancel(nil)
+	}
+}
+
+// runFailure is a monitored failure as the cause of the leaf's context:
+// the failure labelled "run:". It also matches [context.Canceled], the end
+// it gave the context, so the leaf, or an action such as a scenario step,
+// may report the cause in place of that end. A caller's own cause that
+// does not match the end is left out, and the end is reported as the
+// caller ended the context.
+type runFailure struct{ err error }
+
+func (f runFailure) Error() string { return "run: " + f.err.Error() }
+
+func (f runFailure) Unwrap() error { return f.err }
+
+// Is reports whether target is [context.Canceled], the end a monitored
+// failure gives the leaf's context.
+func (f runFailure) Is(target error) bool { return target == context.Canceled }
+
+// leafContext is the context runContext returns. Context is detached from
+// run's cancellation and is cancelled after run ends, with the labelled
+// cause [context.Cause] reads from it; Deadline and Err report run's.
+type leafContext struct {
+	context.Context
+	run context.Context
+}
+
+// Deadline returns run's deadline, which ends the context with run.
+func (c leafContext) Deadline() (time.Time, bool) {
+	return c.run.Deadline()
+}
+
+// Err returns run's error once run has ended, after waiting for the
+// function that cancels Context, so the cause is in place whenever the end
+// is seen: an action that ends the run's context and returns sees the end
+// at once. Err returns run's error rather than Context's, which is always
+// [context.Canceled], so a caller's deadline reports
+// [context.DeadlineExceeded], matching [leafContext.Deadline].
+func (c leafContext) Err() error {
+	if err := c.run.Err(); err != nil {
+		<-c.Done()
+		return err
+	}
+	return c.Context.Err()
+}
+
+// without removes the Coordinator's report of the monitored failure, the
+// error that wraps failure, from the errors err joins, and returns what is
+// left, or nil when nothing is.
+func without(err, failure error) error {
+	if err == nil || errors.Is(errors.Unwrap(err), failure) {
+		return nil
+	}
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
+	}
+	var kept []error
+	for _, e := range joined.Unwrap() {
+		kept = append(kept, without(e, failure))
+	}
+	return errors.Join(kept...)
 }
 
 // uses returns the union of the nodes declared with Use along path, root
-// first, each node once in the order first declared.
+// first, each node once in the order first declared, in a slice of its
+// own. It is the one rule for a leaf's set: execute builds it, and
+// [Command.Leaves] yields it.
 func uses(path []*Command) []graph.Ref {
 	var refs []graph.Ref
 	for _, cmd := range path {

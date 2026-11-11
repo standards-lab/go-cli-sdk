@@ -31,10 +31,8 @@ type getTree struct {
 
 func newGetTree() *getTree {
 	gt := &getTree{g: graph.New()}
-	gt.cfg = gt.g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
-	gt.db = gt.g.Define("db", func(*graph.Scope) (string, error) { return "db value", nil })
+	gt.cfg = gt.g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
+	gt.db = gt.g.Value("db", "db value")
 	gt.store = gt.g.Define("store", func(s *graph.Scope) (string, error) {
 		return "store over " + s.Use(gt.db), nil
 	})
@@ -53,7 +51,7 @@ func newGetTree() *getTree {
 
 func (gt *getTree) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), gt.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(gt.g, gt.cfg))
+	code := cli.Program{Root: gt.root, Graph: gt.g, LifecycleConfig: gt.cfg}.Run(context.Background(), args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

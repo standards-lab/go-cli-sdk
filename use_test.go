@@ -156,7 +156,7 @@ func newUseTree() *useTree {
 // run dispatches args over the tree with its graph, under ctx.
 func (u *useTree) run(ctx context.Context, args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(ctx, u.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(u.g, u.cfg))
+	code := cli.Program{Root: u.root, Graph: u.g, LifecycleConfig: u.cfg}.Run(ctx, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -337,6 +337,108 @@ func TestUse_ShutsDownWhenTheContextEndsMidBody(t *testing.T) {
 	}
 }
 
+func TestUse_TheContextEndsAtOnceWhenTheCallerEndsIt(t *testing.T) {
+	// The command's context ends a moment after the caller's, so the
+	// race this test catches is narrow: it repeats the dispatch.
+	for range 200 {
+		u := newUseTree()
+		ctx, cancel := context.WithCancel(context.Background())
+		var done bool
+		var cause error
+		u.body = func(ctx context.Context) error {
+			cancel()
+			err := ctx.Err()
+			select {
+			case <-ctx.Done():
+				done = true
+			default:
+			}
+			cause = context.Cause(ctx)
+			return err
+		}
+		r := u.run(ctx, "data", "get", "--key", "k", "x")
+		cancel()
+		if !done || cause != context.Canceled {
+			t.Fatalf("once Err returned, Done closed %t and Cause %v, want closed and %v", done, cause, context.Canceled)
+		}
+		if want := "prog data get: " + context.Canceled.Error() + "\n"; r.stderr != want {
+			t.Fatalf("stderr = %q, want %q", r.stderr, want)
+		}
+	}
+}
+
+func TestUse_TheCallersDeadlineEndsTheCommandsContextAsADeadline(t *testing.T) {
+	u := newUseTree()
+	deadline := time.Now().Add(20 * time.Millisecond)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	var gotDeadline time.Time
+	var gotErr error
+	u.body = func(ctx context.Context) error {
+		gotDeadline, _ = ctx.Deadline()
+		<-ctx.Done()
+		gotErr = ctx.Err()
+		return gotErr
+	}
+	r := u.run(ctx, "data", "get", "--key", "k", "x")
+	if !gotDeadline.Equal(deadline) {
+		t.Errorf("Deadline = %v, want the caller's %v", gotDeadline, deadline)
+	}
+	if gotErr != context.DeadlineExceeded {
+		t.Errorf("Err = %v, want %v", gotErr, context.DeadlineExceeded)
+	}
+	if want := "prog data get: " + context.DeadlineExceeded.Error() + "\n"; r.stderr != want {
+		t.Errorf("stderr = %q, want %q", r.stderr, want)
+	}
+}
+
+func TestUse_ACallersCauseIsNotTheCommandsError(t *testing.T) {
+	// The caller's cause stays the context's: a leaf that returns only
+	// its context's end reports that end, as the caller gave it.
+	cause := errors.New("operator interrupt")
+	tests := []struct {
+		name string
+		// ctx returns the caller's context and the function the leaf calls
+		// to end it, which does nothing for a deadline.
+		ctx func(t *testing.T) (ctx context.Context, end func())
+		err error // the context's end the leaf reports
+	}{
+		{"a cancel with a cause", func(t *testing.T) (context.Context, func()) {
+			ctx, cancel := context.WithCancelCause(context.Background())
+			t.Cleanup(func() { cancel(nil) })
+			return ctx, func() { cancel(cause) }
+		}, context.Canceled},
+		{"a deadline with a cause", func(t *testing.T) (context.Context, func()) {
+			ctx, cancel := context.WithDeadlineCause(context.Background(), time.Now().Add(20*time.Millisecond), cause)
+			t.Cleanup(cancel)
+			return ctx, func() {}
+		}, context.DeadlineExceeded},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newUseTree()
+			ctx, end := tt.ctx(t)
+			var gotCause error
+			u.body = func(ctx context.Context) error {
+				end()
+				<-ctx.Done()
+				gotCause = context.Cause(ctx)
+				return ctx.Err()
+			}
+			r := u.run(ctx, "data", "get", "--key", "k", "x")
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if want := "prog data get: " + tt.err.Error() + "\n"; r.stderr != want {
+				t.Errorf("stderr = %q, want %q", r.stderr, want)
+			}
+			if gotCause != cause {
+				t.Errorf("Cause = %v, want the caller's %v", gotCause, cause)
+			}
+		})
+	}
+}
+
 func TestUse_ShutdownTimeoutComesFromTheConfigNode(t *testing.T) {
 	u := newUseTree()
 	u.timeout = 20 * time.Millisecond
@@ -356,7 +458,7 @@ func TestUse_ShutdownTimeoutComesFromTheConfigNode(t *testing.T) {
 	}
 }
 
-func TestUse_PanicsWithoutWithGraph(t *testing.T) {
+func TestUse_PanicsWithoutGraph(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -370,7 +472,7 @@ func TestUse_PanicsWithoutWithGraph(t *testing.T) {
 			u := newUseTree()
 			defer func() {
 				r := recover()
-				want := "cli: prog data: Use declared but Run has no WithGraph option"
+				want := "cli: prog data: Use declared but Program.Graph is nil"
 				if r != want {
 					t.Errorf("panic = %v, want %q", r, want)
 				}
@@ -383,20 +485,37 @@ func TestUse_PanicsWithoutWithGraph(t *testing.T) {
 	}
 }
 
-func TestWithGraph_PanicsOnNil(t *testing.T) {
-	u := newUseTree()
-	for name, call := range map[string]func(){
-		"nil graph":  func() { cli.WithGraph(nil, u.cfg) },
-		"nil config": func() { cli.WithGraph(u.g, nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
+func TestProgram_PanicsOnMissingField(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string // the field the panic must name
+		prog  func(u *useTree) cli.Program
+	}{
+		{"nil root", "Program.Root", func(u *useTree) cli.Program {
+			return cli.Program{Graph: u.g, LifecycleConfig: u.cfg}
+		}},
+		{"graph without lifecycle config", "Program.LifecycleConfig", func(u *useTree) cli.Program {
+			return cli.Program{Root: u.root, Graph: u.g}
+		}},
+		{"lifecycle config without graph", "Program.Graph", func(u *useTree) cli.Program {
+			return cli.Program{Root: u.root, LifecycleConfig: u.cfg}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newUseTree()
 			defer func() {
-				want := "cli: WithGraph with a nil graph or lifecycle config node"
-				if r := recover(); r != want {
-					t.Errorf("panic = %v, want %q", r, want)
+				msg, _ := recover().(string)
+				if want := "cli: " + tt.field + " is nil"; !strings.HasPrefix(msg, want) {
+					t.Errorf("panic = %q, want it to start with %q", msg, want)
+				}
+				if n := len(u.rec.list()); n != 0 {
+					t.Errorf("events = %q, want none", u.rec.list())
 				}
 			}()
-			call()
+			var stdout, stderr bytes.Buffer
+			tt.prog(u).Run(context.Background(), []string{"plain"},
+				cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 		})
 	}
 }
@@ -411,7 +530,7 @@ func TestUse_ReturnsTheCommand(t *testing.T) {
 
 func TestUse_NoRefsDeclaresNothing(t *testing.T) {
 	// A Use with no refs is accepted, as Require with no names is, and
-	// declares nothing: the tree dispatches without WithGraph.
+	// declares nothing: the tree dispatches without a Graph.
 	root := (&cli.Command{Name: "prog"}).Add(
 		(&cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}).Use(),
 	)
@@ -511,42 +630,60 @@ func (w *watched) Shutdown(context.Context) error {
 
 func (w *watched) Err() <-chan error { return w.errs }
 
-func TestUse_MonitoredFailureEndsTheCommandsContext(t *testing.T) {
-	rec := &recorder{}
-	g := graph.New()
-	cfg := g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
-	node := g.Define("watched", func(*graph.Scope) (*watched, error) {
-		return &watched{rec: rec, errs: make(chan error, 1)}, nil
-	})
-	root := (&cli.Command{Name: "prog"}).Add(
-		(&cli.Command{Name: "watch", Run: func(ctx context.Context, inv *cli.Invocation) error {
-			rec.add("run watch")
-			inv.Get(node).errs <- errors.New("connection lost")
-			select {
-			case <-ctx.Done():
-				rec.add("context ended")
-				return nil
-			case <-time.After(5 * time.Second):
-				return errors.New("the context did not end")
+func TestUse_MonitoredFailureEndsTheCommandsContextAndIsReportedOnce(t *testing.T) {
+	// go-core's Coordinator labels a monitored failure "run:" and the node's name.
+	const failure = "prog watch: run: watched: connection lost\n"
+	tests := []struct {
+		name   string
+		ret    func(ctx context.Context) error // what the leaf returns once its context ends
+		stderr string
+	}{
+		{"the leaf returns nil", func(context.Context) error { return nil }, failure},
+		{"the leaf returns its context's end", func(ctx context.Context) error { return ctx.Err() }, failure},
+		{"the leaf returns its context's cause", context.Cause, failure},
+		{"the leaf wraps its context's cause", func(ctx context.Context) error {
+			return fmt.Errorf("watching: %w", context.Cause(ctx))
+		}, "prog watch: watching: run: watched: connection lost\n"},
+		{"the leaf returns an unrelated error", func(context.Context) error {
+			return errors.New("flush: disk full")
+		}, "prog watch: flush: disk full\nrun: watched: connection lost\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := &recorder{}
+			g := graph.New()
+			cfg := g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
+			node := g.Define("watched", func(*graph.Scope) (*watched, error) {
+				return &watched{rec: rec, errs: make(chan error, 1)}, nil
+			})
+			root := (&cli.Command{Name: "prog"}).Add(
+				(&cli.Command{Name: "watch", Run: func(ctx context.Context, inv *cli.Invocation) error {
+					rec.add("run watch")
+					inv.Get(node).errs <- errors.New("connection lost")
+					select {
+					case <-ctx.Done():
+						rec.add("context ended")
+						return tt.ret(ctx)
+					case <-time.After(5 * time.Second):
+						return errors.New("the context did not end")
+					}
+				}}).Use(node),
+			)
+
+			var stdout, stderr bytes.Buffer
+			code := cli.Program{Root: root, Graph: g, LifecycleConfig: cfg}.Run(context.Background(), []string{"watch"},
+				cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
+
+			if code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", code, process.ExitFailure)
 			}
-		}}).Use(node),
-	)
-
-	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), root, []string{"watch"},
-		cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(g, cfg))
-
-	if code != process.ExitFailure {
-		t.Errorf("code = %d, want %d", code, process.ExitFailure)
-	}
-	// go-core's Coordinator labels a monitored failure "run:".
-	if want := "prog watch: run: connection lost\n"; stderr.String() != want {
-		t.Errorf("stderr = %q, want exactly one report %q", stderr.String(), want)
-	}
-	want := []string{"start watched", "run watch", "context ended", "stop watched"}
-	if got := rec.list(); !slices.Equal(got, want) {
-		t.Errorf("events = %q, want %q", got, want)
+			if stderr.String() != tt.stderr {
+				t.Errorf("stderr = %q, want %q", stderr.String(), tt.stderr)
+			}
+			want := []string{"start watched", "run watch", "context ended", "stop watched"}
+			if got := rec.list(); !slices.Equal(got, want) {
+				t.Errorf("events = %q, want %q", got, want)
+			}
+		})
 	}
 }
