@@ -17,8 +17,8 @@ onto go-core v0.12.0.
 - `cli.StringsValue(p *[]string, value []string) flag.Value`, the repeatable string flag's
   value, registered with `fs.Var(cli.StringsValue(&tags, def), "tag", usage)`. It sets `*p` to
   a copy of `value` before it returns; each occurrence appends to `*p`, and the first replaces
-  the default. Help and the restoring of flags between dispatches treat it as they treated a
-  `StringsVar` flag.
+  the default. Help marks the flag repeatable and shows its default, and `Program.Run` restores
+  the values it held before each dispatch.
 
 ### Changed
 
