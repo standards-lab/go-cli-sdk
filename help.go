@@ -77,7 +77,7 @@ func flagsOf(cmd *Command, keep func(name string) bool) []row {
 
 // describe renders f as a flags-section row: its long name, the value
 // placeholder flag.UnquoteUsage derives, and the default when it is not
-// the zero value. A repeatable flag from [StringsVar] takes "string" as its
+// the zero value. A repeatable flag from [StringsValue] takes "string" as its
 // placeholder, since each occurrence takes one, and says it repeats; a flag
 // the command requires says so.
 func describe(f *flag.Flag, required bool) row {

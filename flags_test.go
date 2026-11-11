@@ -3,7 +3,6 @@ package cli_test
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"slices"
 	"strings"
@@ -174,7 +173,7 @@ func TestRun_RedispatchStartsFromDefaults(t *testing.T) {
 	}
 	n := leaf.Flags().Int("n", 0, "a required number")
 	verbose := leaf.Flags().Bool("verbose", false, "a bound flag")
-	cli.StringsVar(leaf.Flags(), &tags, "tag", []string{"def"}, "a repeatable flag")
+	leaf.Flags().Var(cli.StringsValue(&tags, []string{"def"}), "tag", "a repeatable flag")
 	leaf.Require("n")
 	root := (&cli.Command{Name: "prog"}).Add(leaf)
 	dsn := root.Flags().String("dsn", "none", "a root flag")
@@ -519,7 +518,7 @@ func TestInvocation_Changed(t *testing.T) {
 	}
 }
 
-func TestStringsVar_CollectsEveryOccurrenceInOrder(t *testing.T) {
+func TestStringsValue_CollectsEveryOccurrenceInOrder(t *testing.T) {
 	f := newFixture(nil)
 
 	r := dispatch(t, f.root, "echo", "--tag", "b", "x", "--tag=a,c", "y", "--tag", "b")
@@ -535,7 +534,7 @@ func TestStringsVar_CollectsEveryOccurrenceInOrder(t *testing.T) {
 	}
 }
 
-func TestStringsVar_Default(t *testing.T) {
+func TestStringsValue_Default(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -548,7 +547,7 @@ func TestStringsVar_Default(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var tags []string
 			cmd := &cli.Command{Name: "cmd", Run: func(context.Context, *cli.Invocation) error { return nil }}
-			cli.StringsVar(cmd.Flags(), &tags, "tag", []string{"d1", "d2"}, "tag to attach")
+			cmd.Flags().Var(cli.StringsValue(&tags, []string{"d1", "d2"}), "tag", "tag to attach")
 			root := (&cli.Command{Name: "prog"}).Add(cmd)
 
 			r := dispatch(t, root, append([]string{"cmd"}, tt.args...)...)
@@ -560,23 +559,25 @@ func TestStringsVar_Default(t *testing.T) {
 	}
 }
 
-func TestStringsVar_DoesNotAliasTheDefault(t *testing.T) {
+func TestStringsValue_DoesNotAliasTheDefault(t *testing.T) {
 	def := []string{"d1"}
 	var tags []string
-	fs := flag.NewFlagSet("t", flag.ContinueOnError)
 
-	cli.StringsVar(fs, &tags, "tag", def, "")
+	cli.StringsValue(&tags, def)
+
+	if !slices.Equal(tags, []string{"d1"}) {
+		t.Fatalf("tags = %q after StringsValue, want [d1]", tags)
+	}
 	tags[0] = "changed"
-
 	if def[0] != "d1" {
 		t.Errorf("default = %q, want it unchanged", def)
 	}
 }
 
-func TestStringsVar_HelpShowsDefault(t *testing.T) {
+func TestStringsValue_HelpShowsDefault(t *testing.T) {
 	var tags []string
 	cmd := &cli.Command{Name: "cmd", Run: func(context.Context, *cli.Invocation) error { return nil }}
-	cli.StringsVar(cmd.Flags(), &tags, "tag", []string{"d1", "d2"}, "tag to attach")
+	cmd.Flags().Var(cli.StringsValue(&tags, []string{"d1", "d2"}), "tag", "tag to attach")
 	root := (&cli.Command{Name: "prog"}).Add(cmd)
 
 	r := dispatch(t, root, "cmd", "--help")

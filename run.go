@@ -87,7 +87,7 @@ type Program struct {
 // just before that dispatch parsed it, and touches no other flag, so a
 // value the program gave a flag variable after defining it survives, and
 // a single dispatch calls no Set beyond the command line's. A flag from
-// [StringsVar] gets back its values, and its next occurrence replaces them
+// [StringsValue] gets back its values, and its next occurrence replaces them
 // again. A flag whose Value does not implement flag.Getter, such as one
 // from flag.Func or flag.BoolFunc, carries its own state and is not
 // restored. [Invocation.Changed], [Command.Require], and

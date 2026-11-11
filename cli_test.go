@@ -72,7 +72,7 @@ func newFixture(runErr error) *fixture {
 	f.name = echo.Flags().String("name", "world", "name to greet")
 	f.count = echo.Flags().Int("count", 0, "times to echo")
 	f.upper = echo.Flags().Bool("upper", false, "echo in upper case")
-	cli.StringsVar(echo.Flags(), &f.tags, "tag", nil, "tag to attach")
+	echo.Flags().Var(cli.StringsValue(&f.tags, nil), "tag", "tag to attach")
 
 	fail := &cli.Command{
 		Name:    "fail",
