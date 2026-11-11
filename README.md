@@ -19,8 +19,8 @@ It depends on the standard library and
 
 - `cli` — a dispatcher of command trees on `flag`, with generated help, required and exclusive
   flags, input validation, and per-command composition: a command declares the graph nodes it
-  needs, and `Run` builds only those and runs the command under go-core's lifecycle, returning
-  go-core's exit codes. Its `doc.go` lists every exported name.
+  needs, and `Program.Run` builds only those and runs the command under go-core's lifecycle,
+  returning go-core's exit codes. Its `doc.go` lists every exported name.
 - `scenario` — a runner of a tool's narrated scenarios, guided tours of its own commands, run as
   `<tool> scenario <name>` leaves. Each scenario builds only the graph nodes it declares, and a
   `Reporter` narrates its steps as plain text. A tool keeps its scenarios in its own package; its

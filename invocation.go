@@ -9,7 +9,7 @@ import (
 )
 
 // Streams are the streams a dispatch reads from and writes to: the
-// process's, or a test's buffers. [Run] takes them, prints its own output
+// process's, or a test's buffers. [Program.Run] takes them, prints its own output
 // to Stdout and Stderr, and never reads Stdin; a running command reaches
 // them through its [Invocation], which embeds them.
 type Streams struct {

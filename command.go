@@ -141,8 +141,8 @@ func (c *Command) Add(subs ...*Command) *Command {
 // declared; it returns the command, so it chains like Add. A leaf needs the
 // union of the nodes declared along its path, from the root to itself, so a
 // parent's nodes are inherited by every leaf below it, and a node declared
-// at several levels counts once. [Run] builds that union and runs the leaf
-// under it, and the leaf reads each declared node's value with
+// at several levels counts once. [Program.Run] builds that union and runs
+// the leaf under it, and the leaf reads each declared node's value with
 // [Invocation.Get].
 //
 // Use with no refs declares nothing, as Require with no names requires
@@ -150,9 +150,9 @@ func (c *Command) Add(subs ...*Command) *Command {
 // since nothing declared later can make it valid. A nil *graph.Node is not
 // caught here: it reaches [graph.Graph.Build], which panics on it when a
 // dispatch runs a leaf at or below c, after PreRun and before any node is
-// constructed. Use anywhere in a tree requires Run's [WithGraph] option,
-// which is checked when the tree is dispatched and panics then, whichever
-// command is selected.
+// constructed. Use anywhere in a tree requires the [Program]'s Graph and
+// LifecycleConfig, which is checked when the tree is dispatched and panics
+// then, whichever command is selected.
 func (c *Command) Use(refs ...graph.Ref) *Command {
 	if slices.Contains(refs, nil) {
 		panic(fmt.Sprintf("cli: %s: Use of a nil node", c.path()))

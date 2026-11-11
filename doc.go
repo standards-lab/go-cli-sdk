@@ -1,11 +1,12 @@
 // Package cli is a command dispatcher on the standard library's flag
 // package. A program builds a tree of [Command] values, each owning a
-// *flag.FlagSet, and hands the root to [Run] with the process arguments and
-// its [Streams], standard input, output, and error; Run walks the tree to the
-// selected command, parses its flags, runs it, and returns the exit code the
-// program passes to os.Exit, following go-core's process convention. Wiring
-// mistakes in the tree panic when it is built or when it is dispatched, as
-// each symbol's documentation states.
+// *flag.FlagSet, sets the root as a [Program]'s Root, and calls
+// [Program.Run] with the process arguments and its [Streams], standard
+// input, output, and error; Run walks the tree to the selected command,
+// parses its flags, runs it, and returns the exit code the program passes
+// to os.Exit, following go-core's process convention. Wiring mistakes in
+// the tree panic when it is built or when it is dispatched, as each
+// symbol's documentation states.
 //
 // The package exports:
 //
@@ -27,9 +28,10 @@
 //     path declares, and panics naming the command and the node when the
 //     path does not declare it
 //   - [Invocation.Changed], which reports whether a flag was given
-//   - [Run], which dispatches the arguments and returns the exit code
-//   - [Option], which configures one Run, and [WithGraph], the Option that
-//     gives Run the graph that declared nodes are built from
+//   - [Program], a command tree's root with the graph that declared
+//     nodes are built from and the node that configures their lifecycle
+//   - [Program.Run], which dispatches the arguments and returns the exit
+//     code
 //   - [StringsVar], which defines a repeatable string flag
 //   - [NoArgs] and [ExactArgs], the positional-argument validators
 //   - [UsageError], an error reported with the command's usage, with
@@ -50,10 +52,10 @@
 //
 // A command's dependencies are part of the command: [Command.Use] declares
 // the [graph.Node] values it needs, inherited along the command path, and
-// [Run] builds only the union a leaf's path declares, from the [WithGraph]
-// graph, and runs the leaf under a [lifecycle.Coordinator]'s Exec only once
-// the dispatch reaches it, so help, a usage error, or a PreRun error builds
-// nothing. The leaf reads each value with [Invocation.Get]. A leaf whose
+// [Program.Run] builds only the union a leaf's path declares, from the
+// Program's Graph, and runs the leaf under a [lifecycle.Coordinator]'s
+// Exec only once the dispatch reaches it, so help, a usage error, or a
+// PreRun error builds nothing. The leaf reads each value with [Invocation.Get]. A leaf whose
 // path declares no nodes runs with no Build and no lifecycle.
 //
 // Under the lifecycle, a built value that implements [lifecycle.Monitored]

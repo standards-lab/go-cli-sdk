@@ -51,7 +51,7 @@ func newGetTree() *getTree {
 
 func (gt *getTree) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), gt.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(gt.g, gt.cfg))
+	code := cli.Program{Root: gt.root, Graph: gt.g, LifecycleConfig: gt.cfg}.Run(context.Background(), args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

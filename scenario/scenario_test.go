@@ -20,7 +20,7 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// The scenario parent driven through cli.Run over buffers, mounted under a
+// The scenario parent driven through cli.Program.Run over buffers, mounted under a
 // test root over a small graph: db, and cache, which uses db. Each node's
 // value is a subsystem that records its Start and Shutdown, and each
 // constructor records its build, so a test reads what a run built and
@@ -118,7 +118,7 @@ type result struct {
 func (h *harness) run(ctx context.Context, root *cli.Command, args ...string) result {
 	var stdout, stderr bytes.Buffer
 	streams := cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}
-	code := cli.Run(ctx, root, args, streams, cli.WithGraph(h.g, h.cfg))
+	code := cli.Program{Root: root, Graph: h.g, LifecycleConfig: h.cfg}.Run(ctx, args, streams)
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

@@ -70,7 +70,7 @@ func newValidateTree() *validateTree {
 
 func (v *validateTree) run(args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), v.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(v.g, v.cfg))
+	code := cli.Program{Root: v.root, Graph: v.g, LifecycleConfig: v.cfg}.Run(context.Background(), args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

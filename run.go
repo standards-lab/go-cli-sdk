@@ -14,33 +14,29 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// Option configures one [Run].
-type Option func(*options)
+// Program is a command tree ready to dispatch: its root, and the graph that
+// the nodes its commands declare with [Command.Use] are built from.
+//
+// Root is required. Graph and LifecycleConfig go together: a tree that
+// declares Use sets both, and one that declares none may leave both nil.
+type Program struct {
+	// Root is the root of the command tree.
+	Root *Command
 
-// options is what Run's Options set.
-type options struct {
-	graph           *graph.Graph
-	lifecycleConfig *graph.Node[lifecycle.Config]
-}
+	// Graph is the graph that the nodes a leaf's path declares with
+	// [Command.Use] are built from.
+	Graph *graph.Graph
 
-// WithGraph gives Run the graph that the nodes a leaf's path declares with
-// [Command.Use] are built from, and the node whose value configures the
-// [lifecycle.Coordinator] that runs what was built. That node is added to
-// every Build, so its constructor supplies the shutdown timeout, and it
-// must return a finalized Config: lifecycle.New panics on one that is not.
-// WithGraph panics on a nil g or lifecycleConfig.
-func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Option {
-	if g == nil || lifecycleConfig == nil {
-		panic("cli: WithGraph with a nil graph or lifecycle config node")
-	}
-	return func(o *options) {
-		o.graph = g
-		o.lifecycleConfig = lifecycleConfig
-	}
+	// LifecycleConfig is the node whose value configures the
+	// [lifecycle.Coordinator] that runs what was built. It is added to
+	// every Build, so its constructor supplies the shutdown timeout, and
+	// it must return a finalized Config: lifecycle.New panics on one that
+	// is not.
+	LifecycleConfig *graph.Node[lifecycle.Config]
 }
 
 // Run dispatches args, the program arguments without the program name, over
-// the tree rooted at root, and returns the process exit code. streams are
+// the tree rooted at p.Root, and returns the process exit code. streams are
 // the process's streams, or a test's buffers: a running command reads Stdin
 // and writes Stdout and Stderr through its [Invocation], which embeds them,
 // and the dispatcher prints to Stdout and Stderr itself but never reads
@@ -58,11 +54,10 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 //  8. run the leaf with [Command.Run]
 //
 // When the leaf's path has nodes declared with Use, the Build constructs
-// their union and the lifecycle configuration node from the [WithGraph]
-// graph; the System is started with a [lifecycle.Coordinator], the leaf
-// runs under it, reading each declared node's value with
-// [Invocation.Get], and the System is shut down. Nothing is built when the
-// dispatch ends before the Build.
+// their union and p.LifecycleConfig from p.Graph; the System is started
+// with a [lifecycle.Coordinator], the leaf runs under it, reading each
+// declared node's value with [Invocation.Get], and the System is shut
+// down. Nothing is built when the dispatch ends before the Build.
 //
 // Run owns every line the dispatcher prints, and returns go-core's process
 // exit codes:
@@ -93,16 +88,16 @@ func WithGraph(g *graph.Graph, lifecycleConfig *graph.Node[lifecycle.Config]) Op
 // restored. [Invocation.Changed], [Command.Require], and
 // [Command.Exclusive] see only the flags set in the current dispatch.
 //
-// Run panics at the start of the dispatch when any command in the tree has
-// declared [Command.Use] and no [WithGraph] option was given, whichever
-// command is selected, and when a flag being restored from the previous
-// dispatch refuses, in its Set, the String it had before that dispatch.
-func Run(ctx context.Context, root *Command, args []string, streams Streams, opts ...Option) int {
-	var o options
-	for _, opt := range opts {
-		opt(&o)
-	}
-	prepareTree(root, o.graph != nil)
+// Run panics, naming the field, when p.Root is nil, and when only one of
+// p.Graph and p.LifecycleConfig is set. It panics at the start of the
+// dispatch when any command in the tree has declared [Command.Use] and
+// p.Graph is nil, whichever command is selected, and when a flag being
+// restored from the previous dispatch refuses, in its Set, the String it
+// had before that dispatch.
+func (p Program) Run(ctx context.Context, args []string, streams Streams) int {
+	p.check()
+	root := p.Root
+	prepareTree(root, p.Graph != nil)
 	root.restoreFlags()
 	cmd := root
 	var path []*Command
@@ -123,7 +118,7 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 			}
 		}
 		if !cmd.isParent() {
-			return execute(ctx, &o, path, rest, changed, streams)
+			return execute(ctx, p, path, rest, changed, streams)
 		}
 		if len(rest) == 0 {
 			return process.Usage(streams.Stdout, help(cmd))
@@ -134,6 +129,19 @@ func Run(ctx context.Context, root *Command, args []string, streams Streams, opt
 			return process.Usage(streams.Stderr, msg)
 		}
 		cmd, args = sub, rest[1:]
+	}
+}
+
+// check panics, naming the field, when p.Root is nil or when only one of
+// p.Graph and p.LifecycleConfig is set.
+func (p Program) check() {
+	switch {
+	case p.Root == nil:
+		panic("cli: Program.Root is nil")
+	case p.Graph != nil && p.LifecycleConfig == nil:
+		panic("cli: Program.LifecycleConfig is nil but Program.Graph is set")
+	case p.Graph == nil && p.LifecycleConfig != nil:
+		panic("cli: Program.Graph is nil but Program.LifecycleConfig is set")
 	}
 }
 
@@ -199,7 +207,7 @@ func parse(cmd *Command, args []string, streams Streams) (rest, set []string, un
 // under a lifecycle when the path declares nodes with Use, and maps the
 // first error to an exit code. path holds the commands from the root to
 // the leaf, and changed the flags the leaf sees set on the command line.
-func execute(ctx context.Context, o *options, path []*Command, args []string, changed map[string]bool, streams Streams) int {
+func execute(ctx context.Context, p Program, path []*Command, args []string, changed map[string]bool, streams Streams) int {
 	root, cmd := path[0], path[len(path)-1]
 	if cmd.Args != nil {
 		if err := cmd.Args(args); err != nil {
@@ -221,7 +229,7 @@ func execute(ctx context.Context, o *options, path []*Command, args []string, ch
 		err = root.PreRun(ctx, inv)
 	}
 	if err == nil {
-		err = o.run(ctx, cmd, inv)
+		err = p.run(ctx, cmd, inv)
 	}
 	if err == nil {
 		return process.ExitOK
@@ -238,15 +246,15 @@ func execute(ctx context.Context, o *options, path []*Command, args []string, ch
 // with the System set on inv for [Invocation.Get]. The error is the
 // Build's, or the Coordinator's: startup's or the leaf's, joined with the
 // shutdown's.
-func (o *options) run(ctx context.Context, cmd *Command, inv *Invocation) error {
+func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if len(inv.uses) == 0 {
 		return cmd.Run(ctx, inv)
 	}
-	sys, err := o.graph.Build(append(slices.Clone(inv.uses), o.lifecycleConfig)...)
+	sys, err := p.Graph.Build(append(slices.Clone(inv.uses), p.LifecycleConfig)...)
 	if err != nil {
 		return err
 	}
-	return lifecycle.New(sys, sys.Get(o.lifecycleConfig)).Exec(ctx, func(ctx context.Context) error {
+	return lifecycle.New(sys, sys.Get(p.LifecycleConfig)).Exec(ctx, func(ctx context.Context) error {
 		inv.system = sys
 		return cmd.Run(ctx, inv)
 	})

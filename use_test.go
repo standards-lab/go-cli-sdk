@@ -156,7 +156,7 @@ func newUseTree() *useTree {
 // run dispatches args over the tree with its graph, under ctx.
 func (u *useTree) run(ctx context.Context, args ...string) result {
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(ctx, u.root, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(u.g, u.cfg))
+	code := cli.Program{Root: u.root, Graph: u.g, LifecycleConfig: u.cfg}.Run(ctx, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -356,7 +356,7 @@ func TestUse_ShutdownTimeoutComesFromTheConfigNode(t *testing.T) {
 	}
 }
 
-func TestUse_PanicsWithoutWithGraph(t *testing.T) {
+func TestUse_PanicsWithoutGraph(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
@@ -370,7 +370,7 @@ func TestUse_PanicsWithoutWithGraph(t *testing.T) {
 			u := newUseTree()
 			defer func() {
 				r := recover()
-				want := "cli: prog data: Use declared but Run has no WithGraph option"
+				want := "cli: prog data: Use declared but Program.Graph is nil"
 				if r != want {
 					t.Errorf("panic = %v, want %q", r, want)
 				}
@@ -383,20 +383,37 @@ func TestUse_PanicsWithoutWithGraph(t *testing.T) {
 	}
 }
 
-func TestWithGraph_PanicsOnNil(t *testing.T) {
-	u := newUseTree()
-	for name, call := range map[string]func(){
-		"nil graph":  func() { cli.WithGraph(nil, u.cfg) },
-		"nil config": func() { cli.WithGraph(u.g, nil) },
-	} {
-		t.Run(name, func(t *testing.T) {
+func TestProgram_PanicsOnMissingField(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string // the field the panic must name
+		prog  func(u *useTree) cli.Program
+	}{
+		{"nil root", "Program.Root", func(u *useTree) cli.Program {
+			return cli.Program{Graph: u.g, LifecycleConfig: u.cfg}
+		}},
+		{"graph without lifecycle config", "Program.LifecycleConfig", func(u *useTree) cli.Program {
+			return cli.Program{Root: u.root, Graph: u.g}
+		}},
+		{"lifecycle config without graph", "Program.Graph", func(u *useTree) cli.Program {
+			return cli.Program{Root: u.root, LifecycleConfig: u.cfg}
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := newUseTree()
 			defer func() {
-				want := "cli: WithGraph with a nil graph or lifecycle config node"
-				if r := recover(); r != want {
-					t.Errorf("panic = %v, want %q", r, want)
+				msg, _ := recover().(string)
+				if want := "cli: " + tt.field + " is nil"; !strings.HasPrefix(msg, want) {
+					t.Errorf("panic = %q, want it to start with %q", msg, want)
+				}
+				if n := len(u.rec.list()); n != 0 {
+					t.Errorf("events = %q, want none", u.rec.list())
 				}
 			}()
-			call()
+			var stdout, stderr bytes.Buffer
+			tt.prog(u).Run(context.Background(), []string{"plain"},
+				cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 		})
 	}
 }
@@ -411,7 +428,7 @@ func TestUse_ReturnsTheCommand(t *testing.T) {
 
 func TestUse_NoRefsDeclaresNothing(t *testing.T) {
 	// A Use with no refs is accepted, as Require with no names is, and
-	// declares nothing: the tree dispatches without WithGraph.
+	// declares nothing: the tree dispatches without a Graph.
 	root := (&cli.Command{Name: "prog"}).Add(
 		(&cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}).Use(),
 	)
@@ -533,8 +550,8 @@ func TestUse_MonitoredFailureEndsTheCommandsContext(t *testing.T) {
 	)
 
 	var stdout, stderr bytes.Buffer
-	code := cli.Run(context.Background(), root, []string{"watch"},
-		cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}, cli.WithGraph(g, cfg))
+	code := cli.Program{Root: root, Graph: g, LifecycleConfig: cfg}.Run(context.Background(), []string{"watch"},
+		cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 
 	if code != process.ExitFailure {
 		t.Errorf("code = %d, want %d", code, process.ExitFailure)
