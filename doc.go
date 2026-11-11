@@ -57,8 +57,9 @@
 // [Program.Run] builds only the union a leaf's path declares, from the
 // Program's Graph, and runs the leaf under a [lifecycle.Coordinator]'s
 // Exec only once the dispatch reaches it, so help, a usage error, or a
-// PreRun error builds nothing. The leaf reads each value with [Invocation.Get]. A leaf whose
-// path declares no nodes runs with no Build and no lifecycle.
+// PreRun error builds nothing. The leaf reads each value with
+// [Invocation.Get]. A leaf whose path declares no nodes runs with no Build
+// and no lifecycle.
 //
 // Under the lifecycle, a built value that implements [lifecycle.Monitored]
 // ends the running command's context when it reports a failure, and Run

@@ -39,12 +39,8 @@ type leafTree struct {
 
 func newLeafTree() *leafTree {
 	t := &leafTree{g: graph.New()}
-	t.cfg = t.g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
-	node := func(name string) *graph.Node[int] {
-		return t.g.Define(name, func(*graph.Scope) (int, error) { return 0, nil })
-	}
+	t.cfg = t.g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
+	node := func(name string) *graph.Node[int] { return t.g.Value(name, 0) }
 	t.a, t.b, t.c, t.d = node("a"), node("b"), node("c"), node("d")
 	run := func(context.Context, *cli.Invocation) error { return nil }
 	t.get = (&cli.Command{Name: "get", Run: run}).Use(t.c, t.b)
