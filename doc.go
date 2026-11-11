@@ -58,9 +58,9 @@
 //
 // Under the lifecycle, a built value that implements [lifecycle.Monitored]
 // ends the running command's context when it reports a failure, and Run
-// reports that failure with go-core's "run:" label; a failure to start or
-// to shut down the built System is reported with "startup:" or
-// "shutdown:". Each returns ExitFailure.
+// reports that failure with go-core's "run:" label and the failed node's
+// name; a failure to start or to shut down the built System is reported
+// with "startup:" or "shutdown:". Each returns ExitFailure.
 //
 // # Dispatch order
 //

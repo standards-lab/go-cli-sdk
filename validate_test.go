@@ -33,9 +33,7 @@ type validateTree struct {
 
 func newValidateTree() *validateTree {
 	v := &validateTree{g: graph.New()}
-	v.cfg = v.g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
+	v.cfg = v.g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
 	db := v.g.Define("db", func(*graph.Scope) (int, error) {
 		v.calls = append(v.calls, "build db")
 		return 0, nil

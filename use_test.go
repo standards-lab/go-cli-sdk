@@ -514,9 +514,7 @@ func (w *watched) Err() <-chan error { return w.errs }
 func TestUse_MonitoredFailureEndsTheCommandsContext(t *testing.T) {
 	rec := &recorder{}
 	g := graph.New()
-	cfg := g.Define("lifecycle", func(*graph.Scope) (lifecycle.Config, error) {
-		return lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)}, nil
-	})
+	cfg := g.Value("lifecycle", lifecycle.Config{ShutdownTimeout: config.Duration(5 * time.Second)})
 	node := g.Define("watched", func(*graph.Scope) (*watched, error) {
 		return &watched{rec: rec, errs: make(chan error, 1)}, nil
 	})
@@ -541,8 +539,8 @@ func TestUse_MonitoredFailureEndsTheCommandsContext(t *testing.T) {
 	if code != process.ExitFailure {
 		t.Errorf("code = %d, want %d", code, process.ExitFailure)
 	}
-	// go-core's Coordinator labels a monitored failure "run:".
-	if want := "prog watch: run: connection lost\n"; stderr.String() != want {
+	// go-core's Coordinator labels a monitored failure "run:" and the node's name.
+	if want := "prog watch: run: watched: connection lost\n"; stderr.String() != want {
 		t.Errorf("stderr = %q, want exactly one report %q", stderr.String(), want)
 	}
 	want := []string{"start watched", "run watch", "context ended", "stop watched"}
