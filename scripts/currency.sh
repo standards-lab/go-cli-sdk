@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # currency reports every dependency, toolchain, and pin that trails its latest
 # release, one line each, and exits non-zero when it reports any. It reads the
-# network and writes nothing. Run it through `mise run currency`.
+# network and writes nothing. Run it through `mise run currency`. The actions it
+# checks are those of the project root's workflows and, when the repository nests
+# the project in a subdirectory, of the git top-level's.
 #
 # Each scan captures its command's output in a variable before reading it, so
 # under set -e a scan command that fails (a go list missing a go.sum entry)
@@ -38,7 +40,7 @@ report_outdated_requirements() {
 	done <<<"$updates"
 }
 
-report_trailing_go_directive() {
+report_outdated_go_directive() {
 	local mod=$1 go_minor=$2 directive
 	directive=$(cd "$mod" && go mod edit -json | jq -r .Go | cut -d. -f1,2)
 	[ "$directive" = "$go_minor" ] || report "$mod/go.mod: go $directive -> go $go_minor"
@@ -55,17 +57,12 @@ report_outdated_mise_tools() {
 	done <<<"$outdated"
 }
 
-project_and_toplevel_workflows() {
-	local root top
+report_outdated_actions() {
+	local root top workflows actions uses action pin repo latest
 	root=$(pwd -P)
 	top=$(git rev-parse --show-toplevel 2>/dev/null || echo "$root")
 	workflows=("$root"/.github/workflows/*.yml)
 	[ "$top" = "$root" ] || workflows+=("$top"/.github/workflows/*.yml)
-}
-
-report_outdated_actions() {
-	local actions uses action pin repo latest workflows
-	project_and_toplevel_workflows
 	actions=$(matches 'uses: *[^ ]*@[^ ]*' "${workflows[@]}" | sed 's/uses: *//' | sort -u)
 	for uses in $actions; do
 		action=${uses%@*}
@@ -79,7 +76,7 @@ report_outdated_actions() {
 go_minor=$(mise latest go | cut -d. -f1,2)
 for mod in $GO_MODULES; do
 	report_outdated_requirements "$mod"
-	report_trailing_go_directive "$mod" "$go_minor"
+	report_outdated_go_directive "$mod" "$go_minor"
 done
 report_outdated_mise_tools
 report_outdated_actions

@@ -11,7 +11,9 @@ root, and `scenario`, which runs a tool's narrated scenarios on it.
 
 `go-cli-sdk` is the command-line application SDK of
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md), the
-minimal-dependency Go standard. This README and each package's `doc.go` document the repository.
+minimal-dependency Go standard. This README and each package's `doc.go` document the repository,
+and [docs/dispatch.md](docs/dispatch.md) holds the reasoning behind the dispatcher's unexported
+machinery.
 It depends on the standard library and
 [go-core](https://github.com/standards-lab/go-core) alone, a line `depguard` holds in the check.
 
@@ -35,7 +37,7 @@ It depends on the standard library and
 Tasks run through [mise](https://mise.jdx.dev):
 
 ```
-mise run check      # build, vet, format, fix, tidy, test, and lint; writes nothing
+mise run check      # build, vet, format, fix, tidy, test, and lint, then lint-context and lint-references; writes nothing
 mise run currency   # report requirements, Go, tools, and actions behind their latest
 mise run upgrade    # upgrade the go directive, requirements, and tools to their latest
 ```
