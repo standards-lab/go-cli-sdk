@@ -6,9 +6,9 @@ dispatcher on the standard library's `flag` whose commands build only the go-cor
 they declare, under go-core's lifecycle. Its package `scenario` runs a tool's narrated
 scenarios as `cli` commands. The module depends on the standard library and go-core only.
 
-The README and each package's `doc.go` document this repository. The
+The README, each package's `doc.go`, and `docs/` document this repository. The
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md) standard states the principles it follows.
-This context records only working knowledge the code and the README do not express.
+This context records only working knowledge the code and that documentation do not express.
 
 go-cli-sdk's source is spike-cli-architecture's `cli` package
 ([github.com/JaimeStill/spike-cli-architecture](https://github.com/JaimeStill/spike-cli-architecture), archived).

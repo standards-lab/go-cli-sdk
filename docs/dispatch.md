@@ -57,9 +57,10 @@ help gives it the placeholder `string`, since each occurrence takes one.
 
 ## The leaf's context and a monitored failure
 
-When a leaf's path declares nodes, the leaf runs under go-core's `lifecycle.Coordinator`, which
-ends the run's context when a `lifecycle.Monitored` value reports a failure and reports that
-failure labelled `run:`. The aim is that a monitored failure is reported once.
+The dispatcher reports a monitored failure once. When a leaf's path declares nodes, the leaf runs
+under go-core's `lifecycle.Coordinator`, which ends the run's context when a `lifecycle.Monitored`
+value reports a failure and reports that failure labelled `run:`. Four rules keep that failure
+from being reported twice:
 
 - **The leaf's context carries the labelled cause.** A context derived from the run's context
   would carry the failure unlabelled, so the leaf's context (`runContext`, `leafContext`) is
