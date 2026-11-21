@@ -9,5 +9,5 @@ The judgement calls the standards-reviewer applies to go-cli-sdk, beyond what `m
 - `architecture/standards/go-elemental/principles/cli-applications.md`: a command builds only the graph nodes it declares and runs them under go-core's lifecycle; `Program.Run`'s exit codes, with go-core's `ExitUsage` on a usage error and on requested help.
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `Program`, whose `Run` panics naming a nil `Root` or the missing one of `Graph` and `LifecycleConfig`; `cli.StringsValue`, the `flag.Value` a repeatable string flag is registered with through `fs.Var`.
 - `architecture/principles/validation-first.md`: `Validate`, before a command's graph is built.
-- `architecture/principles/context-architecture.md`: the README, `docs/`, and each `doc.go` are the homes.
+- `architecture/principles/context-architecture.md`: the README, `docs/`, and each `doc.go`.
 - `architecture/principles/comments.md`: every comment.
