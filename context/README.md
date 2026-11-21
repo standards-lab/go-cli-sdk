@@ -8,21 +8,20 @@ scenarios as `cli` commands. The module depends on the standard library and go-c
 
 The README, each package's `doc.go`, and `docs/` document this repository. The
 [Go Elemental](https://github.com/standards-lab/architecture/blob/main/standards/go-elemental/README.md) standard states the principles it follows.
-This context records only working knowledge the code and that documentation do not express.
-
-go-cli-sdk's source is spike-cli-architecture's `cli` package
-([github.com/JaimeStill/spike-cli-architecture](https://github.com/JaimeStill/spike-cli-architecture), archived).
 
 ## Capability map
 
-- **Dispatcher and flags** (built): commands on the standard library's `flag`
-  ([command.go](../command.go), [flags.go](../flags.go)).
-- **Generated help and `Footer`** (built): [help.go](../help.go).
-- **Per-command composition** (built): `Use`, `Get`, and `Leaves`
-  ([command.go](../command.go), [invocation.go](../invocation.go)).
-- **`Validate`** (built): [command.go](../command.go).
-- **`Program` and `Streams`** (built): [run.go](../run.go), [invocation.go](../invocation.go).
-- **Scenario runner** (built): package `scenario` ([scenario/doc.go](../scenario/doc.go)).
+- **Dispatcher and flags** (built): command trees on the standard library's `flag`, with root
+  flags accepted at any depth and required and exclusive flags ([doc.go](../doc.go)).
+- **Generated help and `Footer`** (built): each command's help, generated from its tree and flags,
+  with the command's own text appended ([doc.go](../doc.go)).
+- **Per-command composition** (built): `Use`, `Get`, and `Leaves` build only the graph nodes a
+  command declares ([doc.go](../doc.go)).
+- **`Validate`** (built): a leaf's input is checked before anything is built ([doc.go](../doc.go)).
+- **`Program` and `Streams`** (built): dispatch a command tree and return go-core's exit codes
+  ([doc.go](../doc.go)).
+- **Scenario runner** (built): runs a tool's narrated scenarios as `cli` commands
+  ([scenario/doc.go](../scenario/doc.go)).
 - **CI and release** (built): CI runs `mise run check` on every pull request and push to `main`;
   releases are `v*` tags ([ci.yml](../.github/workflows/ci.yml),
   [release.yml](../.github/workflows/release.yml)).
