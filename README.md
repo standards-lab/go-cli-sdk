@@ -17,6 +17,10 @@ machinery.
 It depends on the standard library and
 [go-core](https://github.com/standards-lab/go-core) alone, a line `depguard` holds in the check.
 
+`depguard` lists each allowed module twice, because an entry matches by prefix unless it ends in
+`$`: once as the exact module path and once as a path under it, so a sibling module such as
+`go-core-extra` is not allowed.
+
 ## Packages
 
 - `cli` — a dispatcher of command trees on `flag`, with generated help, required and exclusive
