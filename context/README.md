@@ -18,14 +18,11 @@ go-cli-sdk's source is spike-cli-architecture's `cli` package
 - **Dispatcher and flags** (built): commands on the standard library's `flag`
   ([command.go](../command.go), [flags.go](../flags.go)).
 - **Generated help and `Footer`** (built): [help.go](../help.go).
-- **Per-command composition** (built): `Use` and `Get`, so a command builds only the graph nodes it
-  declares, and `Leaves`, which yields each leaf with the nodes a dispatch to it builds
+- **Per-command composition** (built): `Use`, `Get`, and `Leaves`
   ([command.go](../command.go), [invocation.go](../invocation.go)).
 - **`Validate`** (built): [command.go](../command.go).
-- **`Program` and `Streams`** (built): `Program.Run` dispatches a command tree and returns go-core's
-  exit codes, reporting a `Monitored` value's failure on one line ([run.go](../run.go)).
-- **Scenario runner** (built): package `scenario`, whose `Commands` and `WriteListing` mount a
-  tool's narrated scenarios as `<tool> scenario <name>` leaves ([scenario/doc.go](../scenario/doc.go)).
+- **`Program` and `Streams`** (built): [run.go](../run.go), [invocation.go](../invocation.go).
+- **Scenario runner** (built): package `scenario` ([scenario/doc.go](../scenario/doc.go)).
 - **CI and release** (built): CI runs `mise run check` on every pull request and push to `main`;
   releases are `v*` tags ([ci.yml](../.github/workflows/ci.yml),
   [release.yml](../.github/workflows/release.yml)).
