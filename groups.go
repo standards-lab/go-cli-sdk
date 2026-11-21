@@ -40,8 +40,6 @@ func (c *Command) Exclusive(names ...string) {
 	c.exclusive = append(c.exclusive, slices.Clone(names))
 }
 
-// checkWiring panics on a flag group or requirement c cannot honour. It
-// runs once c's flag set holds the root flags it inherits.
 func (c *Command) checkWiring() {
 	if c.isParent() && (len(c.required) > 0 || len(c.exclusive) > 0) {
 		panic(fmt.Sprintf("cli: %s: flag requirement or group set on a parent command", c.path()))
@@ -63,10 +61,6 @@ func (c *Command) checkWiring() {
 	}
 }
 
-// checkFlags returns a [UsageError] when the flags set on the command line,
-// as changed holds them, break one of c's requirements or groups. Missing
-// required flags are reported first, all in one error; otherwise the first
-// group, in declaration order, with two or more flags set.
 func (c *Command) checkFlags(changed map[string]bool) error {
 	var missing []string
 	for _, name := range c.required {
@@ -91,12 +85,10 @@ func (c *Command) checkFlags(changed map[string]bool) error {
 	return nil
 }
 
-// isRequired reports whether c requires the flag called name.
 func (c *Command) isRequired(name string) bool {
 	return slices.Contains(c.required, name)
 }
 
-// flagList renders names as "--a, --b".
 func flagList(names []string) string {
 	dashed := make([]string, len(names))
 	for i, name := range names {

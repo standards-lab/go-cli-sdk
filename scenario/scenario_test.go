@@ -20,14 +20,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// The scenario parent driven through cli.Program.Run over buffers, mounted under a
-// test root over a small graph: db, and cache, which uses db. Each node's
-// value is a subsystem that records its Start and Shutdown, and each
-// constructor records its build, so a test reads what a run built and
-// started from the recorder.
-
-// recorder collects the events of one dispatch, safe for the concurrent
-// starts and shutdowns of a layer.
 type recorder struct {
 	mu     sync.Mutex
 	events []string
@@ -45,7 +37,6 @@ func (r *recorder) list() []string {
 	return slices.Clone(r.events)
 }
 
-// matching returns the recorded events that start with prefix, in order.
 func (r *recorder) matching(prefix string) []string {
 	var out []string
 	for _, e := range r.list() {
@@ -56,8 +47,6 @@ func (r *recorder) matching(prefix string) []string {
 	return out
 }
 
-// subsystem is a node's value: it records its Start and Shutdown, and its
-// Start fails with startErr when that is set.
 type subsystem struct {
 	name     string
 	rec      *recorder
@@ -74,7 +63,6 @@ func (s *subsystem) Shutdown(context.Context) error {
 	return nil
 }
 
-// harness is the test graph and what a run records over it.
 type harness struct {
 	g     *graph.Graph
 	cfg   *graph.Node[lifecycle.Config]
@@ -82,7 +70,7 @@ type harness struct {
 	cache *graph.Node[*subsystem]
 	rec   *recorder
 
-	cacheStartErr error // set before a dispatch to fail cache's Start
+	cacheStartErr error
 }
 
 func newHarness() *harness {
@@ -103,7 +91,6 @@ func newHarness() *harness {
 	return h
 }
 
-// root mounts scenario.Commands(scenarios...) under a test root.
 func (h *harness) root(scenarios ...scenario.Scenario) *cli.Command {
 	return (&cli.Command{Name: "prog"}).Add(scenario.Commands(scenarios...)...)
 }
@@ -113,8 +100,6 @@ type result struct {
 	stdout, stderr string
 }
 
-// run dispatches args over root with ctx, fresh buffers, and the harness's
-// graph.
 func (h *harness) run(ctx context.Context, root *cli.Command, args ...string) result {
 	var stdout, stderr bytes.Buffer
 	streams := cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr}
@@ -122,12 +107,10 @@ func (h *harness) run(ctx context.Context, root *cli.Command, args ...string) re
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-// builds returns the nodes the run built, in the order it built them.
 func (h *harness) builds() []string {
 	return h.rec.matching("build ")
 }
 
-// step returns a step that records its intent and succeeds.
 func (h *harness) step(intent string) scenario.Step {
 	return scenario.Step{Intent: intent, Action: func(context.Context, *cli.Invocation, *scenario.Reporter) error {
 		h.rec.add("step " + intent)
@@ -135,7 +118,6 @@ func (h *harness) step(intent string) scenario.Step {
 	}}
 }
 
-// pair is two scenarios: first declares db alone, second cache and db.
 func (h *harness) pair() []scenario.Scenario {
 	return []scenario.Scenario{
 		{Name: "first", Summary: "Show the first tour", Nodes: []graph.Ref{h.db}, Steps: []scenario.Step{h.step("one")}},
@@ -143,7 +125,6 @@ func (h *harness) pair() []scenario.Scenario {
 	}
 }
 
-// pairListing is the listing of pair's scenarios.
 const pairListing = "" +
 	"Scenarios:\n" +
 	"  first         Show the first tour\n" +
@@ -161,8 +142,6 @@ func TestCommands_ParentHelpListsTheLeavesInOrderAndEndsWithTheListing(t *testin
 		if r.code != process.ExitUsage {
 			t.Errorf("%v: code = %d, want %d", args, r.code, process.ExitUsage)
 		}
-		// The Commands section and the listing pad the name column to one
-		// width, so each scenario's line starts the same in both.
 		commands := "Commands:\n" +
 			"  first         Show the first tour\n" +
 			"  second-tour   Show the second tour\n"
@@ -205,7 +184,7 @@ func TestCommands_AUsageErrorOnALeafBuildsNothing(t *testing.T) {
 	tests := []struct {
 		name   string
 		args   []string
-		stderr string // the start of the report
+		stderr string
 	}{
 		{"an argument", []string{"scenario", "first", "extra"}, "prog scenario first: "},
 		{"an unknown flag", []string{"scenario", "second-tour", "--bogus"}, "prog scenario second-tour: "},
@@ -240,8 +219,6 @@ func TestCommands_ALeafBuildsOnlyItsScenariosNodes(t *testing.T) {
 	if r.code != process.ExitOK {
 		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitOK, r.stderr)
 	}
-	// first declares db alone, and the parent declares nothing, so cache,
-	// which second-tour declares, is never built.
 	if got, want := h.builds(), []string{"build db", "build lifecycle"}; !slices.Equal(got, want) {
 		t.Errorf("builds = %q, want %q", got, want)
 	}
@@ -252,8 +229,6 @@ func TestCommands_ALeafBuildsOnlyItsScenariosNodes(t *testing.T) {
 
 func TestCommands_BuildsEachDeclaredNodeOnceUnderTheCoordinator(t *testing.T) {
 	h := newHarness()
-	// db is declared twice and reached again through cache; each step
-	// reads db, and both must read the one value the Build made.
 	var seen []*subsystem
 	read := func(intent string) scenario.Step {
 		return scenario.Step{Intent: intent, Action: func(_ context.Context, inv *cli.Invocation, _ *scenario.Reporter) error {
@@ -279,8 +254,6 @@ func TestCommands_BuildsEachDeclaredNodeOnceUnderTheCoordinator(t *testing.T) {
 	if len(seen) != 2 || seen[0] != seen[1] {
 		t.Errorf("the steps read db as %v, want one value twice", seen)
 	}
-	// The Coordinator starts db's layer before cache's, runs the steps,
-	// and shuts down in reverse.
 	want := []string{"start db", "start cache", "step one", "step two", "stop cache", "stop db"}
 	var got []string
 	for _, e := range h.rec.list() {
@@ -396,8 +369,6 @@ func TestRun_NarratesEachStepUnderItsHeading(t *testing.T) {
 	if r.code != process.ExitOK {
 		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitOK, r.stderr)
 	}
-	// The note wraps at 80 columns, its indent included: the first line
-	// is 75 wide, and the next word would take it to 81.
 	want := "" +
 		"[1/3] Open the database\n" +
 		"  The database node was built and started before this step ran, so the step\n" +
@@ -420,8 +391,6 @@ func TestRun_NarratesEachStepUnderItsHeading(t *testing.T) {
 
 func TestRun_NoteKeepsParagraphsAndWrapsByRune(t *testing.T) {
 	h := newHarness()
-	// 26 two-rune words take 77 columns, under the 78 a note's line holds
-	// past its indent, though their bytes alone would take 129.
 	wide := strings.Repeat("éé ", 25) + "éé"
 	root := h.root(scenario.Scenario{
 		Name: "tour",
@@ -484,11 +453,9 @@ func TestRun_AFailedStepStopsTheRunAndIsReportedOnce(t *testing.T) {
 }
 
 func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
-	// A caller's cause is not the step's error: the step reports the
-	// context's end, with or without nodes under a lifecycle.
 	tests := []struct {
 		name  string
-		cause error // the caller's cause, nil for a plain cancel
+		cause error
 		nodes bool
 	}{
 		{"a plain cancel", nil, true},
@@ -537,8 +504,6 @@ func TestRun_AContextThatEndsFailsTheStepUnderWay(t *testing.T) {
 	}
 }
 
-// watched is a subsystem that implements go-core's lifecycle.Monitored,
-// reporting runtime failures on errs.
 type watched struct{ errs chan error }
 
 func (w *watched) Start(context.Context) error    { return nil }
@@ -583,9 +548,9 @@ func TestRun_AMonitoredFailureFailsTheStepUnderWayOnOneLine(t *testing.T) {
 func TestRun_AContextThatEndsUnderAStepThatReturnsNilFailsThatStep(t *testing.T) {
 	tests := []struct {
 		name   string
-		at     int    // the step, from 1, whose action cancels the context
-		stderr string // the report
-		stdout string // the narration
+		at     int
+		stderr string
+		stdout string
 	}{
 		{"a step before the last", 1, "prog scenario tour: step 1 (one): " + context.Canceled.Error() + "\n", "[1/2] one\n"},
 		{"the last step", 2, "prog scenario tour: step 2 (two): " + context.Canceled.Error() + "\n", "[1/2] one\n\n[2/2] two\n"},
@@ -595,8 +560,6 @@ func TestRun_AContextThatEndsUnderAStepThatReturnsNilFailsThatStep(t *testing.T)
 			h := newHarness()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			// Each action records itself, cancels the run's context at its
-			// step, ignores the context, and returns nil.
 			step := func(n int, intent string) scenario.Step {
 				return scenario.Step{Intent: intent, Action: func(context.Context, *cli.Invocation, *scenario.Reporter) error {
 					h.rec.add("step " + intent)
@@ -682,7 +645,7 @@ func TestCommands_PanicsOnAWiringMistake(t *testing.T) {
 	tests := []struct {
 		name      string
 		scenarios []scenario.Scenario
-		want      string // what the panic message names
+		want      string
 	}{
 		{"no scenarios", nil, "no scenarios"},
 		{"two with one name", []scenario.Scenario{{Name: "twin", Steps: steps}, {Name: "twin", Steps: steps}}, `"twin"`},

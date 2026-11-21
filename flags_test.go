@@ -17,9 +17,9 @@ func TestRun_LeafFlagsMayFollowPositionals(t *testing.T) {
 	tests := []struct {
 		name  string
 		args  []string
-		want  []string // positional arguments
+		want  []string
 		upper bool
-		value string // --name
+		value string
 	}{
 		{"flag first", []string{"echo", "--upper", "a", "b"}, []string{"a", "b"}, true, "world"},
 		{"flag between", []string{"echo", "a", "--upper", "b"}, []string{"a", "b"}, true, "world"},
@@ -67,7 +67,7 @@ func TestRun_FlagAfterPositionalIsChecked(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		want string // stderr's first line
+		want string
 	}{
 		{"unknown flag", []string{"echo", "a", "--bogus"}, "prog echo: flag provided but not defined: -bogus\n"},
 		{"value flag with no value", []string{"echo", "a", "--name"}, "prog echo: flag needs an argument: -name\n"},
@@ -109,7 +109,7 @@ func TestRun_RootFlagAcceptedAtAnyDepth(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		want []string // the leaf's positional arguments
+		want []string
 	}{
 		{"before the parent", []string{"--dsn", "x", "group", "leaf"}, nil},
 		{"after the parent", []string{"group", "--dsn", "x", "leaf"}, nil},
@@ -214,7 +214,6 @@ func TestRun_RedispatchStartsFromDefaults(t *testing.T) {
 	}
 }
 
-// countingValue is a flag.Getter string Value that counts its Set calls.
 type countingValue struct {
 	s    string
 	sets int
@@ -224,9 +223,6 @@ func (v *countingValue) Set(s string) error { v.s = s; v.sets++; return nil }
 func (v *countingValue) String() string     { return v.s }
 func (v *countingValue) Get() any           { return v.s }
 
-// programValueTree returns a tree prog { leaf } whose leaf flags --n and
-// --mode the program changed after defining them, as a default read from
-// the environment would.
 func programValueTree() (root *cli.Command, n *int, mode *countingValue) {
 	leaf := &cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}
 	n = new(int)
@@ -413,7 +409,6 @@ func TestRun_PanicsOnDispatchWiringMistake(t *testing.T) {
 					t.Errorf("panic = %q, want %q", msg, tt.want)
 				}
 			}()
-			// The mistake is on a path other than the one dispatched.
 			dispatch(t, root, "a")
 		})
 	}

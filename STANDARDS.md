@@ -10,3 +10,4 @@ The judgement calls the standards-reviewer applies to go-cli-sdk, beyond what `m
 - `architecture/standards/go-elemental/principles/construction-and-execution.md`: `Program`, whose `Run` panics naming a nil `Root` or the missing one of `Graph` and `LifecycleConfig`; `cli.StringsValue`, the `flag.Value` a repeatable string flag is registered with through `fs.Var`; and every new exported function and constructor.
 - `architecture/principles/validation-first.md`: `Validate`, before a command's graph is built.
 - `architecture/principles/context-architecture.md`: the README and `doc.go` are the homes.
+- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests, scripts, and every configuration file (TOML, YAML, `.gitignore`); doc comments on unexported identifiers and test functions go, and reasoning with no other home moves into names, exported docs, or `docs/`.

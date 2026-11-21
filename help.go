@@ -7,9 +7,6 @@ import (
 	"text/tabwriter"
 )
 
-// help returns cmd's generated help: its summary, usage line, subcommands,
-// own flags, and inherited flags, each section left out when it is empty,
-// and last what cmd's own Footer writes, after a blank line.
 func help(cmd *Command) string {
 	var b strings.Builder
 	if cmd.Summary != "" {
@@ -41,9 +38,6 @@ func help(cmd *Command) string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// usageLine returns cmd's one-line usage, such as
-// "blobfs <command> [flags]" for a parent or
-// "blobfs blob get [flags] <path>" for a leaf.
 func usageLine(cmd *Command) string {
 	parts := []string{cmd.path()}
 	if len(cmd.children) > 0 {
@@ -56,15 +50,11 @@ func usageLine(cmd *Command) string {
 	return strings.Join(parts, " ")
 }
 
-// row is one line of a help section: a command or flag name, and the text
-// beside it.
 type row struct {
-	name string // "version", or "--bucket string"
-	text string // "Print the version", or "bucket to read (default \"logs\")"
+	name string
+	text string
 }
 
-// flagsOf returns a row for each flag on cmd's flag set whose name keep
-// accepts, in lexical order.
 func flagsOf(cmd *Command, keep func(name string) bool) []row {
 	var lines []row
 	cmd.Flags().VisitAll(func(f *flag.Flag) {
@@ -75,11 +65,6 @@ func flagsOf(cmd *Command, keep func(name string) bool) []row {
 	return lines
 }
 
-// describe renders f as a flags-section row: its long name, the value
-// placeholder flag.UnquoteUsage derives, and the default when it is not
-// the zero value. A repeatable flag from [StringsValue] takes "string" as its
-// placeholder, since each occurrence takes one, and says it repeats; a flag
-// the command requires says so.
 func describe(f *flag.Flag, required bool) row {
 	kind, usage := flag.UnquoteUsage(f)
 	_, repeatable := f.Value.(*stringsValue)
@@ -108,14 +93,11 @@ func describe(f *flag.Flag, required bool) row {
 	return row{name: name, text: usage}
 }
 
-// writeSection writes a section headed title with rows in aligned columns,
-// or nothing when rows is empty.
 func writeSection(b *strings.Builder, title string, rows []row) {
 	if len(rows) == 0 {
 		return
 	}
 	fmt.Fprintf(b, "\n%s:\n", title)
-	// A tabwriter over a strings.Builder cannot fail to write.
 	tw := tabwriter.NewWriter(b, 0, 0, 3, ' ', 0)
 	for _, r := range rows {
 		_, _ = fmt.Fprintf(tw, "  %s\t%s\n", r.name, r.text)

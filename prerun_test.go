@@ -12,9 +12,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// hookTree is a test tree whose root has a PreRun hook: prog { cmd, group
-// { leaf } }. The hook and both leaves append to calls; cmd takes exactly
-// one argument, defines --local, and requires nothing.
 type hookTree struct {
 	root    *cli.Command
 	calls   []string
@@ -193,6 +190,5 @@ func TestPreRun_PanicsBelowTheRoot(t *testing.T) {
 		}
 	}()
 
-	// The mistake is on a path other than the one dispatched.
 	dispatch(t, root, "a")
 }

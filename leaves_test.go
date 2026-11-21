@@ -16,19 +16,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// leafTree is a test tree with Use at several levels:
-//
-//	prog            Use a
-//	  data          Use b, a   (a again: inherited, counted once)
-//	    get         Use c, b   (b again)
-//	    put
-//	  tools
-//	    deep        Use d
-//	      x         Use a      (a again, from two levels up)
-//	  plain
-//
-// Every node is a plain value with no dependencies, so a Build reaches
-// exactly the roots it is given, in the order given.
 type leafTree struct {
 	root       *cli.Command
 	get        *cli.Command
@@ -59,13 +46,11 @@ func newLeafTree() *leafTree {
 	return t
 }
 
-// leaf is one pair Leaves yielded, with the nodes as names.
 type leaf struct {
 	path  string
 	nodes []string
 }
 
-// names returns the names of refs, in order.
 func names(refs []graph.Ref) []string {
 	var out []string
 	for _, r := range refs {
@@ -74,7 +59,6 @@ func names(refs []graph.Ref) []string {
 	return out
 }
 
-// collect ranges over cmd.Leaves() to the end.
 func collect(cmd *cli.Command) []leaf {
 	var out []leaf
 	for path, refs := range cmd.Leaves() {
@@ -119,8 +103,6 @@ func TestLeaves_EachSetIsWhatADispatchToTheLeafBuilds(t *testing.T) {
 		if code := (cli.Program{Root: tr.root, Graph: tr.g, LifecycleConfig: tr.cfg}).Run(context.Background(), args, streams); code != process.ExitOK {
 			t.Fatalf("Run(%q) = %d, stderr %q", args, code, stderr.String())
 		}
-		// The nodes have no dependencies, so the Build reaches its roots in
-		// the order given: the leaf's set, then the lifecycle node.
 		mu.Lock()
 		want := append(slices.Clone(refs), graph.Ref(tr.cfg))
 		if !slices.Equal(built, want) {
