@@ -87,13 +87,13 @@ type Command struct {
 	PreRun func(ctx context.Context, inv *Invocation) error
 
 	flags     *flag.FlagSet
-	inherited map[string]bool // names of the root flags shared into flags
+	inherited map[string]bool
 	parent    *Command
 	children  []*Command
-	required  []string    // flag names from Require, in order
-	exclusive [][]string  // flag groups from Exclusive, in order
-	uses      []graph.Ref // graph nodes from Use, in order
-	undo      []func()    // on the root: restores the flags the last dispatch set
+	required  []string
+	exclusive [][]string
+	uses      []graph.Ref
+	undo      []func()
 }
 
 // Flags returns the command's flag set, creating it on first use. The set
@@ -193,10 +193,6 @@ func (c *Command) Leaves() iter.Seq2[string, []graph.Ref] {
 	}
 }
 
-// walkLeaves yields each leaf at or below the last command of path, which
-// holds the commands from the root to it, and reports whether the consumer
-// wants more. The path slice is shared down the walk, and the uses function
-// copies the leaf's nodes out of it.
 func walkLeaves(path []*Command, yield func(string, []graph.Ref) bool) bool {
 	cmd := path[len(path)-1]
 	if !cmd.isParent() {
@@ -210,7 +206,6 @@ func walkLeaves(path []*Command, yield func(string, []graph.Ref) bool) bool {
 	return true
 }
 
-// child returns the subcommand of c named name, or nil.
 func (c *Command) child(name string) *Command {
 	for _, sub := range c.children {
 		if sub.Name == name {
@@ -220,14 +215,10 @@ func (c *Command) child(name string) *Command {
 	return nil
 }
 
-// isParent reports whether c selects a subcommand rather than running. A
-// command with neither subcommands nor Run counts as a parent, so running it
-// prints its help instead of doing nothing.
 func (c *Command) isParent() bool {
 	return len(c.children) > 0 || c.Run == nil
 }
 
-// path returns the command's words from the root, such as "blobfs blob get".
 func (c *Command) path() string {
 	if c.parent == nil {
 		return c.Name

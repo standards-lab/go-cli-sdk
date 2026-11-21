@@ -19,7 +19,6 @@ func ExactArgs(n int) func(args []string) error {
 	}
 }
 
-// plural returns word, with an "s" unless n is 1.
 func plural(n int, word string) string {
 	if n == 1 {
 		return word

@@ -1,5 +1,7 @@
 package cli
 
+// See docs/dispatch.md
+
 import (
 	"flag"
 	"fmt"
@@ -7,19 +9,6 @@ import (
 	"strings"
 )
 
-// prepareTree readies the tree rooted at root for dispatch. It shares every
-// flag defined on root's flag set into the flag set of each command below
-// it, so a root flag is accepted at any depth and sets the one value the
-// root defined. Only the root's flags are shared: a flag defined on a
-// nested parent stays local to that level.
-//
-// It runs at the start of every dispatch, over the whole tree, so a wiring
-// mistake panics on the first run whatever path the user takes: a command
-// that defines a flag with a root flag's name, a parent with an Args or
-// Validate function it would never call, a PreRun below the root, a flag
-// requirement or group the command cannot honour, or a [Command.Use] on any
-// command when the [Program] has no Graph, which hasGraph reports. Sharing is
-// idempotent, so a tree can be dispatched more than once.
 func prepareTree(root *Command, hasGraph bool) {
 	var walk func(c *Command)
 	walk = func(c *Command) {
@@ -44,9 +33,6 @@ func prepareTree(root *Command, hasGraph bool) {
 	walk(root)
 }
 
-// inherit defines each flag of from on c's flag set with the same Value, so
-// setting it at c's level sets it everywhere. It panics when c already
-// defines a flag of that name itself.
 func (c *Command) inherit(from *flag.FlagSet) {
 	from.VisitAll(func(f *flag.Flag) {
 		if c.inherited[f.Name] {
@@ -63,11 +49,6 @@ func (c *Command) inherit(from *flag.FlagSet) {
 	})
 }
 
-// restoreFlags undoes the flags the previous dispatch of the tree rooted
-// at c set, putting each back to the value it held before that dispatch
-// parsed it, latest first, so a root flag set at two levels ends at the
-// value it held before either. It then forgets them, so a flag the
-// previous dispatch did not set is never touched.
 func (c *Command) restoreFlags() {
 	for _, undo := range slices.Backward(c.undo) {
 		undo()
@@ -75,17 +56,10 @@ func (c *Command) restoreFlags() {
 	c.undo = nil
 }
 
-// undoer returns a function that puts f back to the value it holds now,
-// or nil when the dispatcher does not restore f. A [StringsValue] flag gets
-// back its values and whether its next occurrence replaces them. Any other
-// flag that holds a value, which the flag package's own flags show by
-// implementing flag.Getter, is Set to its current String. A Value without
-// Get, such as one from flag.Func, carries its own state and is not
-// restored. The function panics when the flag's Set refuses that String.
 func undoer(cmd *Command, f *flag.Flag) func() {
 	if v, ok := f.Value.(*stringsValue); ok {
-		values, set := slices.Clone(*v.p), v.set
-		return func() { *v.p, v.set = values, set }
+		values, replacedDefault := slices.Clone(*v.p), v.replacedDefault
+		return func() { *v.p, v.replacedDefault = values, replacedDefault }
 	}
 	if _, ok := f.Value.(flag.Getter); !ok {
 		return nil
@@ -98,14 +72,6 @@ func undoer(cmd *Command, f *flag.Flag) func() {
 	}
 }
 
-// interleave splits a leaf's arguments into its flag arguments, in order,
-// and its positional arguments, so flags may follow positionals. It
-// classifies each argument by the flag package's own rules: "--" ends the
-// flags and everything after it is positional; "-" and any argument not
-// starting with "-" is positional; a flag without "=" whose Value is not a
-// boolean takes the next argument as its value, whatever it looks like.
-// Unknown and malformed flags are kept as flag arguments, so fs.Parse
-// reports them as it would have.
 func interleave(fs *flag.FlagSet, args []string) (flags, positional []string) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
@@ -129,8 +95,6 @@ func interleave(fs *flag.FlagSet, args []string) (flags, positional []string) {
 	return flags, positional
 }
 
-// isBool reports whether f is a boolean flag, which takes no separate
-// value argument.
 func isBool(f *flag.Flag) bool {
 	b, ok := f.Value.(interface{ IsBoolFlag() bool })
 	return ok && b.IsBoolFlag()
@@ -153,24 +117,20 @@ func StringsValue(p *[]string, value []string) flag.Value {
 	return &stringsValue{p: p}
 }
 
-// stringsValue is the flag.Value behind [StringsValue].
 type stringsValue struct {
-	p   *[]string
-	set bool // whether Set has replaced the default
+	p               *[]string
+	replacedDefault bool
 }
 
-// Set appends s, first dropping the default on the flag's first occurrence.
 func (v *stringsValue) Set(s string) error {
-	if !v.set {
+	if !v.replacedDefault {
 		*v.p = nil
-		v.set = true
+		v.replacedDefault = true
 	}
 	*v.p = append(*v.p, s)
 	return nil
 }
 
-// String renders the values as "[a,b]", and an empty or unbound value as
-// "[]", which help treats as no default.
 func (v *stringsValue) String() string {
 	if v == nil || v.p == nil {
 		return "[]"

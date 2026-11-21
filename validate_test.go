@@ -17,11 +17,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// validateTree is a test tree for Validate: prog { cmd }. cmd takes exactly
-// one argument, requires --key, holds --a and --b exclusive, declares db,
-// and has a Validate; the root has a PreRun. Validate, PreRun, db's
-// constructor, and cmd's Run record to calls; Validate returns err and
-// keeps the Invocation it saw.
 type validateTree struct {
 	root  *cli.Command
 	g     *graph.Graph
@@ -95,10 +90,9 @@ func TestValidate_NotCalledWhenAnEarlierCheckFails(t *testing.T) {
 	tests := []struct {
 		name   string
 		args   []string
-		stderr string // the start of the usage error, naming the earlier check
+		stderr string
 	}{
 		{"argument count", []string{"cmd", "--key", "k"}, "prog cmd: accepts 1 argument, got 0\n"},
-		// Both fail; the argument count is checked first.
 		{"argument count before required flag", []string{"cmd"}, "prog cmd: accepts 1 argument, got 0\n"},
 		{"required flag", []string{"cmd", "x"}, "prog cmd: required flag --key not set\n"},
 		{"exclusive group", []string{"cmd", "x", "--key", "k", "--a", "--b"}, "prog cmd: flags --a, --b cannot be used together\n"},
@@ -160,7 +154,6 @@ func TestValidate_PanicsOnAParent(t *testing.T) {
 	}).Add(&cli.Command{Name: "leaf", Run: ok})
 	root := (&cli.Command{Name: "prog"}).Add(&cli.Command{Name: "a", Run: ok}, group)
 
-	// The mistake is on a path other than the one dispatched.
 	got := panicOf(func() { dispatch(t, root, "a") })
 
 	if want := "cli: prog group: Validate set on a parent command"; got != want {

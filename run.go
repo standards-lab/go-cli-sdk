@@ -1,5 +1,7 @@
 package cli
 
+// See docs/dispatch.md
+
 import (
 	"context"
 	"errors"
@@ -114,9 +116,6 @@ func (p Program) Run(ctx context.Context, args []string, streams Streams) int {
 		if !ok {
 			return code
 		}
-		// The leaf sees its own flags and the root flags, given at
-		// whichever level they were parsed. A nested parent's local flags
-		// are left out, so a leaf flag of the same name is not shadowed.
 		for _, name := range set {
 			if !cmd.isParent() || root.Flags().Lookup(name) != nil {
 				changed[name] = true
@@ -137,8 +136,6 @@ func (p Program) Run(ctx context.Context, args []string, streams Streams) int {
 	}
 }
 
-// check panics, naming the field, when p.Root is nil or when only one of
-// p.Graph and p.LifecycleConfig is set.
 func (p Program) check() {
 	switch {
 	case p.Root == nil:
@@ -150,24 +147,11 @@ func (p Program) check() {
 	}
 }
 
-// parse parses args against cmd's flags and returns the positional
-// arguments left, the names of the flags args set, and for each of those
-// the dispatcher restores, a function that puts it back to its value
-// before the parse. The undo functions are returned even when parsing
-// fails part way, and then also cover a flag whose malformed value its
-// Set wrote anyway. It parses with a flag set made for this dispatch that
-// shares the Values of cmd's own, so the flags set count only this
-// dispatch's, which a flag.FlagSet parsed before would not forget. A
-// parent's flags precede its subcommand, so parsing stops at the first
-// non-flag argument, which names it; a leaf's flags may come anywhere
-// among its positional arguments, up to a "--". When parsing ends the
-// dispatch, because help was asked for or a flag was wrong, it reports
-// that and returns ok false with the exit code.
 func parse(cmd *Command, args []string, streams Streams) (rest, set []string, undo []func(), code int, ok bool) {
 	fs := flag.NewFlagSet(cmd.Name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	undoers := make(map[string]func())
-	before := make(map[string]string) // each flag's String before the parse
+	before := make(map[string]string)
 	cmd.Flags().VisitAll(func(f *flag.Flag) {
 		fs.Var(f.Value, f.Name, f.Usage)
 		undoers[f.Name] = undoer(cmd, f)
@@ -185,9 +169,6 @@ func parse(cmd *Command, args []string, streams Streams) (rest, set []string, un
 		}
 	})
 	if err != nil {
-		// A flag whose Set failed is not visited, yet the flag package's
-		// numeric Values write their variable before reporting the error,
-		// so any other restorable flag whose String changed is kept too.
 		fs.VisitAll(func(f *flag.Flag) {
 			if u := undoers[f.Name]; u != nil && !slices.Contains(set, f.Name) && f.Value.String() != before[f.Name] {
 				undo = append(undo, u)
@@ -203,15 +184,9 @@ func parse(cmd *Command, args []string, streams Streams) (rest, set []string, un
 	if cmd.isParent() {
 		return fs.Args(), set, undo, process.ExitOK, true
 	}
-	// interleave left only flags and their values, so fs.Args() is empty.
 	return positional, set, undo, process.ExitOK, true
 }
 
-// execute checks the leaf's positional argument count, its flag groups,
-// and its input with Validate, runs the root's PreRun and then the leaf,
-// under a lifecycle when the path declares nodes with Use, and maps the
-// first error to an exit code. path holds the commands from the root to
-// the leaf, and changed the flags the leaf sees set on the command line.
 func execute(ctx context.Context, p Program, path []*Command, args []string, changed map[string]bool, streams Streams) int {
 	root, cmd := path[0], path[len(path)-1]
 	if cmd.Args != nil {
@@ -224,7 +199,6 @@ func execute(ctx context.Context, p Program, path []*Command, args []string, cha
 		return usageError(cmd, streams.Stderr, err)
 	}
 	if cmd.Validate != nil {
-		// Validate's error is a usage error whatever its type.
 		if err := cmd.Validate(inv); err != nil {
 			return usageError(cmd, streams.Stderr, err)
 		}
@@ -245,22 +219,6 @@ func execute(ctx context.Context, p Program, path []*Command, args []string, cha
 	return process.Fail(streams.Stderr, cmd.path(), err)
 }
 
-// run runs the leaf cmd with inv. When inv's path declares no nodes it
-// calls Run directly; otherwise it builds them and the lifecycle
-// configuration node, and runs cmd under a Coordinator for the System,
-// with the System set on inv for [Invocation.Get]. The error is the
-// Build's, or the Coordinator's: startup's or the leaf's, joined with the
-// shutdown's.
-//
-// A monitored failure is reported once. When a monitored failure ends the
-// leaf's context, the context's [context.Cause] is a [runFailure]: the
-// failure labelled "run:", as the Coordinator labels it. A leaf error that
-// is only the context's end is replaced by that cause. A caller's own cause
-// does not replace it, so a context the caller ended reports
-// [context.Canceled] or [context.DeadlineExceeded]. When the leaf's error
-// then carries the failure, because the leaf returned the cause or wrapped
-// it, that error replaces the Coordinator's own "run:" report. A leaf error
-// unrelated to the failure is reported beside it.
 func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if len(inv.uses) == 0 {
 		return cmd.Run(ctx, inv)
@@ -269,21 +227,17 @@ func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	if err != nil {
 		return err
 	}
-	var leafErr, failure error // failure is the monitored failure the leaf's error carries
+	var leafErr, failure error
 	err = lifecycle.New(sys, sys.Get(p.LifecycleConfig)).Exec(ctx, func(runCtx context.Context) error {
 		inv.system = sys
 		leafCtx, stop := runContext(ctx, runCtx)
 		defer stop()
 		leafErr = cmd.Run(leafCtx, inv)
-		// The cause replaces the context's end only when it is still that
-		// end, as a monitored failure's is, not a caller's own cause.
 		if leafErr != nil && leafErr == leafCtx.Err() {
 			if cause := context.Cause(leafCtx); errors.Is(cause, leafErr) {
 				leafErr = cause
 			}
 		}
-		// The run context ended while the caller's did not: the
-		// Coordinator failed it with a monitored failure, its cause.
 		if ctx.Err() == nil && runCtx.Err() != nil && errors.Is(leafErr, context.Cause(runCtx)) {
 			failure = context.Cause(runCtx)
 			return nil
@@ -296,14 +250,6 @@ func (p Program) run(ctx context.Context, cmd *Command, inv *Invocation) error {
 	return errors.Join(leafErr, without(err, failure))
 }
 
-// runContext returns the context the leaf runs under. The context carries
-// runCtx's values and deadline and ends when runCtx does. When runCtx ends
-// while ctx, the caller's context, has not, the context's cause is
-// runCtx's cause labelled "run:", the Coordinator's label for a monitored
-// failure. A context derived from runCtx would carry the cause unlabelled,
-// so the leaf's context is detached from runCtx's cancellation, and a
-// function [context.AfterFunc] runs after runCtx ends cancels it with the
-// labelled cause. stop releases the context.
 func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func()) {
 	detached, cancel := context.WithCancelCause(context.WithoutCancel(runCtx))
 	stopAfter := context.AfterFunc(runCtx, func() {
@@ -319,41 +265,23 @@ func runContext(ctx, runCtx context.Context) (leaf context.Context, stop func())
 	}
 }
 
-// runFailure is a monitored failure as the cause of the leaf's context:
-// the failure labelled "run:". It also matches [context.Canceled], the end
-// it gave the context, so the leaf, or an action such as a scenario step,
-// may report the cause in place of that end. A caller's own cause that
-// does not match the end is left out, and the end is reported as the
-// caller ended the context.
 type runFailure struct{ err error }
 
 func (f runFailure) Error() string { return "run: " + f.err.Error() }
 
 func (f runFailure) Unwrap() error { return f.err }
 
-// Is reports whether target is [context.Canceled], the end a monitored
-// failure gives the leaf's context.
 func (f runFailure) Is(target error) bool { return target == context.Canceled }
 
-// leafContext is the context runContext returns. Context is detached from
-// run's cancellation and is cancelled after run ends, with the labelled
-// cause [context.Cause] reads from it; Deadline and Err report run's.
 type leafContext struct {
 	context.Context
 	run context.Context
 }
 
-// Deadline returns run's deadline, which ends the context with run.
 func (c leafContext) Deadline() (time.Time, bool) {
 	return c.run.Deadline()
 }
 
-// Err returns run's error once run has ended, after waiting for the
-// function that cancels Context, so the cause is in place whenever the end
-// is seen: an action that ends the run's context and returns sees the end
-// at once. Err returns run's error rather than Context's, which is always
-// [context.Canceled], so a caller's deadline reports
-// [context.DeadlineExceeded], matching [leafContext.Deadline].
 func (c leafContext) Err() error {
 	if err := c.run.Err(); err != nil {
 		<-c.Done()
@@ -362,9 +290,6 @@ func (c leafContext) Err() error {
 	return c.Context.Err()
 }
 
-// without removes the Coordinator's report of the monitored failure, the
-// error that wraps failure, from the errors err joins, and returns what is
-// left, or nil when nothing is.
 func without(err, failure error) error {
 	if err == nil || errors.Is(errors.Unwrap(err), failure) {
 		return nil
@@ -380,10 +305,6 @@ func without(err, failure error) error {
 	return errors.Join(kept...)
 }
 
-// uses returns the union of the nodes declared with Use along path, root
-// first, each node once in the order first declared, in a slice of its
-// own. It is the one rule for a leaf's set: execute builds it, and
-// [Command.Leaves] yields it.
 func uses(path []*Command) []graph.Ref {
 	var refs []graph.Ref
 	for _, cmd := range path {
@@ -396,8 +317,6 @@ func uses(path []*Command) []graph.Ref {
 	return refs
 }
 
-// usageError reports err with cmd's short usage on stderr and returns
-// ExitUsage.
 func usageError(cmd *Command, stderr io.Writer, err error) int {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %v\n", cmd.path(), err)

@@ -14,20 +14,17 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// result is what one dispatch produced.
 type result struct {
 	code   int
 	stdout string
 	stderr string
 }
 
-// dispatch runs args over root with an empty stdin and fresh buffers.
 func dispatch(t *testing.T, root *cli.Command, args ...string) result {
 	t.Helper()
 	return dispatchIn(t, root, strings.NewReader(""), args...)
 }
 
-// dispatchIn runs args over root with stdin and fresh buffers.
 func dispatchIn(t *testing.T, root *cli.Command, stdin io.Reader, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -35,9 +32,6 @@ func dispatchIn(t *testing.T, root *cli.Command, stdin io.Reader, args ...string
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-// fixture is a test tree: prog { echo, fail, misuse, group { leaf } }.
-// prog defines the root flag --dsn and group the local flag --deep. echo
-// and leaf record what they were run with.
 type fixture struct {
 	root  *cli.Command
 	args  []string
@@ -222,7 +216,7 @@ Global flags:
 	tests := []struct {
 		name string
 		args []string
-		want string // the help's first lines
+		want string
 	}{
 		{"leaf --help", []string{"echo", "--help"}, leafHelp},
 		{"leaf -h", []string{"echo", "-h"}, leafHelp},

@@ -1,5 +1,7 @@
 package scenario
 
+// See docs/dispatch.md
+
 import (
 	"context"
 	"errors"
@@ -32,11 +34,6 @@ type Step struct {
 	Action func(ctx context.Context, inv *cli.Invocation, r *Reporter) error
 }
 
-// command builds the leaf command that runs s: named and summarized as s
-// is, taking no arguments, and declaring s's nodes with Use. The
-// dispatcher builds and starts the declared nodes before the command runs,
-// so the first step runs over a System already up, and each step narrates
-// through a Reporter over the command's stdout.
 func command(s Scenario) *cli.Command {
 	return (&cli.Command{
 		Name:    s.Name,
@@ -48,14 +45,6 @@ func command(s Scenario) *cli.Command {
 	}).Use(s.Nodes...)
 }
 
-// run runs s's steps in order with inv, the scenario command's Invocation,
-// narrating each intent through a Reporter over inv.Stdout before its
-// action, as [Commands] states. After each action it checks ctx itself,
-// so an action that ignores ctx, or ends it and returns nil, still fails
-// its step, before the next heading prints. A step whose error is only
-// ctx's end fails with ctx's cause instead when that cause matches the end,
-// so a monitored failure that ended ctx is reported under the step, and a
-// caller's own cause is not.
 func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 	r := &Reporter{w: inv.Stdout}
 	for i, step := range s.Steps {
@@ -64,10 +53,6 @@ func run(ctx context.Context, s Scenario, inv *cli.Invocation) error {
 		if err == nil {
 			err = ctx.Err()
 		}
-		// A step that reports only its context's end reports why it
-		// ended when the cause is still that end, as the dispatcher's
-		// cause for a monitored failure is; a caller's own cause is not
-		// reported, so the end reads as the caller gave it.
 		if err != nil && err == ctx.Err() {
 			if cause := context.Cause(ctx); errors.Is(cause, err) {
 				err = cause

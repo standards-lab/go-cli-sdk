@@ -10,9 +10,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// groupTree returns prog { cmd }, where prog defines the root flag --dsn
-// and cmd the flags --a, --b, --c (strings) and --json, --yaml (bools),
-// with wire applied to cmd. ran reports whether cmd ran.
 func groupTree(wire func(cmd *cli.Command)) (root *cli.Command, ran *bool) {
 	ran = new(bool)
 	cmd := &cli.Command{Name: "cmd", Run: func(context.Context, *cli.Invocation) error {
@@ -35,7 +32,7 @@ func TestRequire(t *testing.T) {
 		name     string
 		required []string
 		args     []string
-		err      string // the error line, or "" for success
+		err      string
 	}{
 		{"given", []string{"a"}, []string{"cmd", "--a", "x"}, ""},
 		{"given at its default", []string{"a"}, []string{"cmd", "--a="}, ""},
@@ -63,7 +60,7 @@ func TestExclusive(t *testing.T) {
 		name   string
 		groups [][]string
 		args   []string
-		err    string // the error line, or "" for success
+		err    string
 	}{
 		{"none set", [][]string{{"a", "b"}}, nil, ""},
 		{"one set", [][]string{{"a", "b"}}, []string{"--b", "x"}, ""},
@@ -105,9 +102,6 @@ func TestRequire_CheckedBeforeExclusive(t *testing.T) {
 	checkGroupResult(t, r, *ran, "prog cmd: required flag --c not set")
 }
 
-// checkGroupResult checks a dispatch to cmd: success with cmd run when
-// wantErr is empty, otherwise ExitUsage, wantErr with cmd's usage on
-// stderr, and cmd not run.
 func checkGroupResult(t *testing.T, r result, ran bool, wantErr string) {
 	t.Helper()
 	if wantErr == "" {
@@ -192,7 +186,6 @@ func TestFlagGroups_PanicOnWiringMistake(t *testing.T) {
 				}
 			}()
 
-			// The mistake is on a path other than the one dispatched.
 			dispatch(t, root, "ok")
 		})
 	}

@@ -16,11 +16,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// getTree is a test tree for Invocation.Get: prog { data { both, only },
-// store, bare }. data declares db, both adds store, store declares store
-// alone (which Uses db, so its Build reaches db undeclared), and only and
-// bare add nothing. Each node's value is its name. Every leaf runs read,
-// which the test sets.
 type getTree struct {
 	root      *cli.Command
 	g         *graph.Graph
@@ -55,7 +50,6 @@ func (gt *getTree) run(args ...string) result {
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-// panicOf runs fn and returns what it panicked with, or nil.
 func panicOf(fn func()) (r any) {
 	defer func() { r = recover() }()
 	fn()
@@ -66,7 +60,7 @@ func TestGet_ReturnsEachDeclaredNodesValue(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
-		want map[string]string // node name to the value Get returns
+		want map[string]string
 	}{
 		{"declared on the leaf and inherited", []string{"data", "both"}, map[string]string{"db": "db value", "store": "store over db value"}},
 		{"inherited from the parent alone", []string{"data", "only"}, map[string]string{"db": "db value"}},
@@ -115,8 +109,6 @@ func TestGet_PanicsNamingThePathAndTheNode(t *testing.T) {
 			`cli: prog data only: Get of node "store", which the command's path does not declare with Use`,
 		},
 		{
-			// store Uses db, so db is in the System, but the path does not
-			// declare it.
 			"a node the Build reached undeclared",
 			[]string{"store"},
 			func(gt *getTree, inv *cli.Invocation) { inv.Get(gt.db) },

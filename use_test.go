@@ -18,8 +18,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// recorder collects the events of one dispatch, safe for the concurrent
-// starts and shutdowns of a layer.
 type recorder struct {
 	mu     sync.Mutex
 	events []string
@@ -37,7 +35,6 @@ func (r *recorder) list() []string {
 	return slices.Clone(r.events)
 }
 
-// count returns how many events equal event.
 func (r *recorder) count(event string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -50,14 +47,12 @@ func (r *recorder) count(event string) int {
 	return n
 }
 
-// fake is a subsystem that records its Start and Shutdown, and fails or
-// blocks as set.
 type fake struct {
 	name     string
 	rec      *recorder
 	startErr error
 	stopErr  error
-	block    chan struct{} // when non-nil, Shutdown waits for it to close
+	block    chan struct{}
 }
 
 func (f *fake) Start(context.Context) error {
@@ -73,31 +68,25 @@ func (f *fake) Shutdown(context.Context) error {
 	return f.stopErr
 }
 
-// useTree is a test tree with a graph: prog { data { get, put }, plain }.
-// data declares db; get adds store, which uses db, and names db again; put adds
-// nothing; plain and the root declare nothing. get takes exactly one argument,
-// requires --key, and holds --a and --b exclusive. The root's PreRun, the
-// constructors, the fakes, and the leaves record to rec.
 type useTree struct {
 	root  *cli.Command
-	data  *cli.Command // the parent that declares db
+	data  *cli.Command
 	g     *graph.Graph
 	cfg   *graph.Node[lifecycle.Config]
 	db    *graph.Node[*fake]
 	store *graph.Node[*fake]
 	rec   *recorder
 
-	// Set before dispatching, to fail or shape one step.
-	hookErr  error
-	buildErr error // store's constructor
-	startErr error // store's Start
-	stopErr  error // store's Shutdown
-	block    chan struct{}
-	runErr   error
-	timeout  time.Duration
-	body     func(ctx context.Context) error // get's body, after recording
+	hookErr       error
+	storeBuildErr error
+	storeStartErr error
+	storeStopErr  error
+	block         chan struct{}
+	runErr        error
+	timeout       time.Duration
+	getBody       func(ctx context.Context) error
 
-	inv *cli.Invocation // what the last leaf to run received
+	lastInvocation *cli.Invocation
 }
 
 func newUseTree() *useTree {
@@ -114,23 +103,22 @@ func newUseTree() *useTree {
 	u.store = u.g.Define("store", func(s *graph.Scope) (*fake, error) {
 		s.Use(u.db)
 		u.rec.add("build store")
-		if u.buildErr != nil {
-			return nil, u.buildErr
+		if u.storeBuildErr != nil {
+			return nil, u.storeBuildErr
 		}
-		return &fake{name: "store", rec: u.rec, startErr: u.startErr, stopErr: u.stopErr, block: u.block}, nil
+		return &fake{name: "store", rec: u.rec, startErr: u.storeStartErr, stopErr: u.storeStopErr, block: u.block}, nil
 	})
 
 	leaf := func(name string) func(context.Context, *cli.Invocation) error {
 		return func(ctx context.Context, inv *cli.Invocation) error {
 			u.rec.add("run " + name)
-			u.inv = inv
-			if name == "get" && u.body != nil {
-				return u.body(ctx)
+			u.lastInvocation = inv
+			if name == "get" && u.getBody != nil {
+				return u.getBody(ctx)
 			}
 			return u.runErr
 		}
 	}
-	// get declares store and db in two calls, so the second appends.
 	get := (&cli.Command{Name: "get", Args: cli.ExactArgs(1), Run: leaf("get")}).Use(u.store).Use(u.db)
 	get.Flags().String("key", "", "")
 	get.Flags().Bool("a", false, "")
@@ -153,14 +141,12 @@ func newUseTree() *useTree {
 	return u
 }
 
-// run dispatches args over the tree with its graph, under ctx.
 func (u *useTree) run(ctx context.Context, args ...string) result {
 	var stdout, stderr bytes.Buffer
 	code := cli.Program{Root: u.root, Graph: u.g, LifecycleConfig: u.cfg}.Run(ctx, args, cli.Streams{Stdin: strings.NewReader(""), Stdout: &stdout, Stderr: &stderr})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-// builds returns how many constructors ran.
 func (u *useTree) builds() int {
 	n := 0
 	for _, e := range u.rec.list() {
@@ -179,7 +165,6 @@ func TestUse_BuildsAndRunsTheLeafUnderALifecycle(t *testing.T) {
 	}
 	want := []string{
 		"prerun",
-		// store's constructor records after its Use of db returns.
 		"build db", "build store", "build lifecycle",
 		"start db", "start store",
 		"run get",
@@ -188,7 +173,7 @@ func TestUse_BuildsAndRunsTheLeafUnderALifecycle(t *testing.T) {
 	if got := u.rec.list(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}
-	if got := u.inv.Get(u.store); got == nil || got.name != "store" {
+	if got := u.lastInvocation.Get(u.store); got == nil || got.name != "store" {
 		t.Errorf("Get(store) = %v, want the built store", got)
 	}
 }
@@ -203,7 +188,7 @@ func TestUse_InheritedFromTheParent(t *testing.T) {
 	if got := u.rec.list(); !slices.Equal(got, want) {
 		t.Errorf("events = %q, want %q", got, want)
 	}
-	if got := u.inv.Get(u.db); got == nil || got.name != "db" {
+	if got := u.lastInvocation.Get(u.db); got == nil || got.name != "db" {
 		t.Errorf("Get(db) = %v, want the built db", got)
 	}
 }
@@ -267,19 +252,18 @@ func TestUse_FailuresReportedOnce(t *testing.T) {
 	tests := []struct {
 		name   string
 		set    func(u *useTree)
-		err    string // the reported error
+		err    string
 		events []string
 	}{
 		{
 			"build error",
-			func(u *useTree) { u.buildErr = errors.New("no store") },
+			func(u *useTree) { u.storeBuildErr = errors.New("no store") },
 			"store: no store",
 			[]string{"prerun", "build db", "build store"},
 		},
 		{
 			"start error",
-			func(u *useTree) { u.startErr = errors.New("store down") },
-			// go-core's Coordinator labels a start failure "startup:".
+			func(u *useTree) { u.storeStartErr = errors.New("store down") },
 			"startup: store: store down",
 			[]string{"prerun", "build db", "build store", "build lifecycle", "start db", "start store", "stop store", "stop db"},
 		},
@@ -291,7 +275,7 @@ func TestUse_FailuresReportedOnce(t *testing.T) {
 		},
 		{
 			"shutdown error",
-			func(u *useTree) { u.stopErr = errors.New("store stuck") },
+			func(u *useTree) { u.storeStopErr = errors.New("store stuck") },
 			"shutdown: store: store stuck",
 			[]string{"prerun", "build db", "build store", "build lifecycle", "start db", "start store", "run get", "stop store", "stop db"},
 		},
@@ -318,7 +302,7 @@ func TestUse_ShutsDownWhenTheContextEndsMidBody(t *testing.T) {
 	u := newUseTree()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	u.body = func(ctx context.Context) error {
+	u.getBody = func(ctx context.Context) error {
 		cancel()
 		<-ctx.Done()
 		return ctx.Err()
@@ -338,14 +322,12 @@ func TestUse_ShutsDownWhenTheContextEndsMidBody(t *testing.T) {
 }
 
 func TestUse_TheContextEndsAtOnceWhenTheCallerEndsIt(t *testing.T) {
-	// The command's context ends a moment after the caller's, so the
-	// race this test catches is narrow: it repeats the dispatch.
 	for range 200 {
 		u := newUseTree()
 		ctx, cancel := context.WithCancel(context.Background())
 		var done bool
 		var cause error
-		u.body = func(ctx context.Context) error {
+		u.getBody = func(ctx context.Context) error {
 			cancel()
 			err := ctx.Err()
 			select {
@@ -374,7 +356,7 @@ func TestUse_TheCallersDeadlineEndsTheCommandsContextAsADeadline(t *testing.T) {
 	defer cancel()
 	var gotDeadline time.Time
 	var gotErr error
-	u.body = func(ctx context.Context) error {
+	u.getBody = func(ctx context.Context) error {
 		gotDeadline, _ = ctx.Deadline()
 		<-ctx.Done()
 		gotErr = ctx.Err()
@@ -393,15 +375,11 @@ func TestUse_TheCallersDeadlineEndsTheCommandsContextAsADeadline(t *testing.T) {
 }
 
 func TestUse_ACallersCauseIsNotTheCommandsError(t *testing.T) {
-	// The caller's cause stays the context's: a leaf that returns only
-	// its context's end reports that end, as the caller gave it.
 	cause := errors.New("operator interrupt")
 	tests := []struct {
 		name string
-		// ctx returns the caller's context and the function the leaf calls
-		// to end it, which does nothing for a deadline.
-		ctx func(t *testing.T) (ctx context.Context, end func())
-		err error // the context's end the leaf reports
+		ctx  func(t *testing.T) (ctx context.Context, end func())
+		err  error
 	}{
 		{"a cancel with a cause", func(t *testing.T) (context.Context, func()) {
 			ctx, cancel := context.WithCancelCause(context.Background())
@@ -419,7 +397,7 @@ func TestUse_ACallersCauseIsNotTheCommandsError(t *testing.T) {
 			u := newUseTree()
 			ctx, end := tt.ctx(t)
 			var gotCause error
-			u.body = func(ctx context.Context) error {
+			u.getBody = func(ctx context.Context) error {
 				end()
 				<-ctx.Done()
 				gotCause = context.Cause(ctx)
@@ -488,7 +466,7 @@ func TestUse_PanicsWithoutGraph(t *testing.T) {
 func TestProgram_PanicsOnMissingField(t *testing.T) {
 	tests := []struct {
 		name  string
-		field string // the field the panic must name
+		field string
 		prog  func(u *useTree) cli.Program
 	}{
 		{"nil root", "Program.Root", func(u *useTree) cli.Program {
@@ -529,8 +507,6 @@ func TestUse_ReturnsTheCommand(t *testing.T) {
 }
 
 func TestUse_NoRefsDeclaresNothing(t *testing.T) {
-	// A Use with no refs is accepted, as Require with no names is, and
-	// declares nothing: the tree dispatches without a Graph.
 	root := (&cli.Command{Name: "prog"}).Add(
 		(&cli.Command{Name: "leaf", Run: func(context.Context, *cli.Invocation) error { return nil }}).Use(),
 	)
@@ -560,17 +536,10 @@ func TestUse_PanicsOnAnUntypedNilRef(t *testing.T) {
 }
 
 func TestUse_NilNodePanicsAtDispatch(t *testing.T) {
-	// A nil *graph.Node passes Use and reaches graph.Build, which panics on
-	// it when a dispatch runs a leaf whose path declares it. Build checks
-	// every root before it constructs any, so no constructor runs even when
-	// a real node comes before the nil one, declared on the leaf or
-	// inherited from a parent.
 	var nilNode *graph.Node[*fake]
 	tests := []struct {
 		name string
-		// add adds a leaf named broken to u's tree, declaring nilNode, and
-		// returns the path that dispatches it.
-		add func(u *useTree, leaf *cli.Command) []string
+		add  func(u *useTree, leaf *cli.Command) []string
 	}{
 		{"alone", func(u *useTree, leaf *cli.Command) []string {
 			u.root.Add(leaf.Use(nilNode))
@@ -581,7 +550,6 @@ func TestUse_NilNodePanicsAtDispatch(t *testing.T) {
 			return []string{"broken"}
 		}},
 		{"after a parent's node", func(u *useTree, leaf *cli.Command) []string {
-			// data declares db, which the leaf inherits ahead of nilNode.
 			u.data.Add(leaf.Use(nilNode))
 			return []string{"data", "broken"}
 		}},
@@ -611,8 +579,6 @@ func TestUse_NilNodePanicsAtDispatch(t *testing.T) {
 	}
 }
 
-// watched is a subsystem that implements go-core's lifecycle.Monitored: it
-// records its Start and Shutdown, and reports runtime failures on errs.
 type watched struct {
 	rec  *recorder
 	errs chan error
@@ -631,11 +597,10 @@ func (w *watched) Shutdown(context.Context) error {
 func (w *watched) Err() <-chan error { return w.errs }
 
 func TestUse_MonitoredFailureEndsTheCommandsContextAndIsReportedOnce(t *testing.T) {
-	// go-core's Coordinator labels a monitored failure "run:" and the node's name.
 	const failure = "prog watch: run: watched: connection lost\n"
 	tests := []struct {
 		name   string
-		ret    func(ctx context.Context) error // what the leaf returns once its context ends
+		ret    func(ctx context.Context) error
 		stderr string
 	}{
 		{"the leaf returns nil", func(context.Context) error { return nil }, failure},

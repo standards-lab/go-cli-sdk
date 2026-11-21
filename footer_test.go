@@ -11,8 +11,6 @@ import (
 	"github.com/standards-lab/go-core/process"
 )
 
-// footerTree returns the fixture's tree with a Footer on the root that
-// writes a section of its own.
 func footerTree() *fixture {
 	f := newFixture(nil)
 	f.root.Footer = func(w io.Writer) {
@@ -27,7 +25,7 @@ func TestRun_FooterEndsTheCommandsFullHelp(t *testing.T) {
 	tests := []struct {
 		name   string
 		args   []string
-		stderr bool // whether the help goes to stderr
+		stderr bool
 	}{
 		{"--help", []string{"--help"}, false},
 		{"-h", []string{"-h"}, false},

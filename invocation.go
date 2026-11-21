@@ -33,10 +33,10 @@ type Invocation struct {
 	// Args holds the positional arguments left after flag parsing.
 	Args []string
 
-	cmd     *Command        // the leaf, which names the command in a wiring panic
-	uses    []graph.Ref     // the nodes the leaf's path declares with Use
-	system  *graph.System   // what the Build constructed; nil until it runs
-	changed map[string]bool // the flags set on the command line
+	cmd     *Command
+	uses    []graph.Ref
+	system  *graph.System
+	changed map[string]bool
 }
 
 // Get returns the value of n, a node the command's path declares with
